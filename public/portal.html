@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
+<head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>综合出行服务平台</title>
@@ -17,36 +17,32 @@
     a{text-decoration:none}
   </style>
   <script>
-    function go(url, newWindow){ 
-      if(newWindow) {
-        window.open(url, '_blank')
-      } else {
-        location.href = url
-      }
-    }
+    function go(url){ location.href = url }
   </script>
-  </head>
-  <body>
+  <!-- 说明：部署后访问 portal.html 即为“情境实验首页”；点击“高铁/动车”跳回本系统首页（/）。 -->
+  <!-- 若你绑定自定义域名，链接无需修改；如需在新窗口打开，可改为 window.open(url,'_blank')。 -->
+</head>
+<body>
   <div class="container">
     <div class="title">
       若您需要从大连站出发去往别的城市，请根据您以往出行的经历或未来出行计划进行选择，您有如下选择方式：
     </div>
 
     <div class="options">
-      <a href="javascript:void(0)" onclick="go('https://www.12306.cn/index/', true)">
+      <a href="javascript:void(0)" onclick="go('https://www.12306.cn/index/')">
         <div class="option highspeed">普速列车</div>
       </a>
 
-      <a href="javascript:void(0)" onclick="go('https://flights.ctrip.com/online/channel/domestic', true)">
+      <a href="javascript:void(0)" onclick="go('https://flights.ctrip.com/online/channel/domestic')">
         <div class="option plane">飞机</div>
       </a>
 
-      <!-- 高铁/动车：跳到本系统应用页 -->
-      <a href="javascript:void(0)" onclick="go('/app.html')">
+      <!-- 高铁/动车：跳转到当前站点的应用首页（/） -->
+      <a href="javascript:void(0)" onclick="go('/')">
         <div class="option train">高铁/动车</div>
       </a>
 
-      <a href="javascript:void(0)" onclick="go('https://mm.ctrip.com/webapp/bus', true)">
+      <a href="javascript:void(0)" onclick="go('https://mm.ctrip.com/webapp/bus')">
         <div class="option bus">客运/自驾车</div>
       </a>
     </div>
@@ -54,5 +50,10 @@
     <p class="desc">可通过（单击图标进入购票网页）查询预售期十五天之内上述方式票价以及出行时间信息，确定1种方式，进行购票操作。</p>
     <p style="color:#f00;font-weight:700">接下来，请开始您的选择</p>
   </div>
-  </body>
+</body>
 </html>
+
+
+
+
+

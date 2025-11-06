@@ -3,7 +3,6 @@ import {
   Card, 
   Form, 
   Select, 
-  DatePicker, 
   Button, 
   Table, 
   Tag, 
@@ -32,13 +31,12 @@ import {
   getComplexDiscountInfo,
   PRICE_FLOAT_SCENARIOS,
   DATE_TYPES,
-  TIME_PERIODS,
-  TRAVEL_TIME_TYPES
+  TIME_PERIODS
 } from '../utils/complexDiscountRule'
+import { ensureKMap } from '../utils/trainKMap'
 import dayjs from 'dayjs'
 
 const { Option } = Select
-const { RangePicker } = DatePicker
 
 function SearchTicket({ dbReady }) {
   const [form] = Form.useForm()
@@ -55,7 +53,8 @@ function SearchTicket({ dbReady }) {
   // 复杂折扣参数
   const [useComplexDiscount, setUseComplexDiscount] = useState(false)
   const [priceFloatScenario, setPriceFloatScenario] = useState(PRICE_FLOAT_SCENARIOS.FLOAT_10)
-  const [travelTimeType, setTravelTimeType] = useState(TRAVEL_TIME_TYPES.K0)
+  // 预加载车次-K映射
+  useEffect(() => { ensureKMap() }, [])
 
   // 初始化参与者ID
   useEffect(() => {
@@ -106,10 +105,20 @@ function SearchTicket({ dbReady }) {
       const fromStation = values.fromStation
       const toStation = values.toStation
       
-      // 计算提前购票天数
-      const travelDate = values.travelDate || dayjs()
-      const daysDiff = travelDate.diff(dayjs(), 'day')
+      // 从提前购票天数选择中计算
+      const advanceDaysSelect = values.advanceDaysSelect || '1-3'
+      let daysDiff = 0
+      if (advanceDaysSelect === '1-3') {
+        daysDiff = 2 // 取中间值，或可以根据需要调整
+      } else if (advanceDaysSelect === '4-9') {
+        daysDiff = 6 // 取中间值
+      } else if (advanceDaysSelect === '10+') {
+        daysDiff = 15 // 默认值
+      }
       setAdvanceDays(daysDiff)
+      
+      // 使用当前日期作为出行日期（用于折扣计算）
+      const travelDate = dayjs()
 
       const results = await dbManager.searchTickets(
         fromStation, 
@@ -122,7 +131,6 @@ function SearchTicket({ dbReady }) {
       if (useComplexDiscount) {
         discountedTickets = applyComplexDiscountToTickets(results, {
           priceFloatScenario,
-          travelTimeType,
           departureDate: travelDate.format('YYYY-MM-DD'),
           advanceDays: daysDiff
         })
@@ -145,18 +153,55 @@ function SearchTicket({ dbReady }) {
     if (tickets.length > 0) {
       if (useComplexDiscount) {
         const formValues = form.getFieldsValue()
+        const advanceDaysSelect = formValues.advanceDaysSelect || '1-3'
+        let calcDays = 0
+        if (advanceDaysSelect === '1-3') {
+          calcDays = 2
+        } else if (advanceDaysSelect === '4-9') {
+          calcDays = 6
+        } else if (advanceDaysSelect === '10+') {
+          calcDays = 15
+        }
         const discountedTickets = applyComplexDiscountToTickets(tickets, {
           priceFloatScenario,
-          travelTimeType,
-          departureDate: formValues.travelDate?.format('YYYY-MM-DD'),
-          advanceDays: days
+          departureDate: dayjs().format('YYYY-MM-DD'),
+          advanceDays: calcDays
         })
         setTickets(discountedTickets)
-        message.info(`已更新复杂折扣: ${getComplexDiscountInfo({ priceFloatScenario, travelTimeType })}`)
+        message.info(`已更新复杂折扣: ${getComplexDiscountInfo({ priceFloatScenario })}`)
       } else {
         const discountedTickets = applyDiscountToTickets(tickets, days)
         setTickets(discountedTickets)
         message.info(`已更新折扣: ${getDiscountInfo(days)}`)
+      }
+    }
+  }
+
+  // 处理提前购票天数选择变化
+  const handleAdvanceDaysSelectChange = (value) => {
+    let calcDays = 0
+    if (value === '1-3') {
+      calcDays = 2
+    } else if (value === '4-9') {
+      calcDays = 6
+    } else if (value === '10+') {
+      calcDays = 15
+    }
+    setAdvanceDays(calcDays)
+    form.setFieldValue('advanceDaysSelect', value)
+    
+    // 如果已有查询结果，立即更新折扣
+    if (tickets.length > 0) {
+      if (useComplexDiscount) {
+        const discountedTickets = applyComplexDiscountToTickets(tickets, {
+          priceFloatScenario,
+          departureDate: dayjs().format('YYYY-MM-DD'),
+          advanceDays: calcDays
+        })
+        setTickets(discountedTickets)
+      } else {
+        const discountedTickets = applyDiscountToTickets(tickets, calcDays)
+        setTickets(discountedTickets)
       }
     }
   }
@@ -369,14 +414,19 @@ function SearchTicket({ dbReady }) {
             </Col>
             <Col xs={24} sm={12} md={8} lg={6}>
               <Form.Item
-                label="出行日期"
-                name="travelDate"
+                label="提前购票天数"
+                name="advanceDaysSelect"
+                initialValue="1-3"
               >
-                <DatePicker 
+                <Select 
                   style={{ width: '100%' }}
-                  placeholder="选择出行日期"
-                  disabledDate={(current) => current && current < dayjs().startOf('day')}
-                />
+                  placeholder="选择提前购票天数"
+                  onChange={handleAdvanceDaysSelectChange}
+                >
+                  <Option value="1-3">提前1-3天</Option>
+                  <Option value="4-9">提前4-9天</Option>
+                  <Option value="10+">提前10天及以上</Option>
+                </Select>
               </Form.Item>
             </Col>
             <Col xs={24} sm={12} md={8} lg={6}>
@@ -425,18 +475,6 @@ function SearchTicket({ dbReady }) {
                 </Col>
                 
                 <Col span={6}>
-                  <Form.Item label="旅行时间类型">
-                    <Select
-                      value={travelTimeType}
-                      onChange={setTravelTimeType}
-                    >
-                      <Option value={TRAVEL_TIME_TYPES.K0}>K=0</Option>
-                      <Option value={TRAVEL_TIME_TYPES.K1}>K=1</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                
-                <Col span={6}>
                   <Form.Item label="自动识别">
                     <div style={{ padding: '8px 12px', background: '#f0f9ff', borderRadius: '6px', color: '#1890ff' }}>
                       <div>📅 日期类型：自动判断</div>
@@ -459,7 +497,7 @@ function SearchTicket({ dbReady }) {
                 value={`${advanceDays} 天`}
                 prefix={<CalendarOutlined />}
                 suffix={useComplexDiscount ? 
-                  getComplexDiscountInfo({ priceFloatScenario, travelTimeType }) : 
+                  getComplexDiscountInfo({ priceFloatScenario }) : 
                   getDiscountInfo(advanceDays)
                 }
               />

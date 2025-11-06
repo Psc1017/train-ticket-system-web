@@ -1,14 +1,58 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>高铁票价查询系统</title>
-    <script type="module" crossorigin src="/assets/index-BlyHJHrr.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-XS_2GYBp.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>综合出行服务平台</title>
+  <style>
+    body{font-family:Microsoft YaHei,Arial;margin:0;background:#f9f9f9;color:#4a4a4a}
+    .container{max-width:1200px;margin:50px auto;text-align:center;padding:0 20px}
+    .title{font-size:24px;color:#595959;line-height:1.6;margin-bottom:40px}
+    .options{display:flex;flex-wrap:wrap;gap:30px;justify-content:center;margin:40px 0}
+    .option{width:180px;height:120px;border-radius:60px;display:flex;align-items:center;justify-content:center;
+            font-size:24px;font-weight:700;color:#fff;cursor:pointer;transition:.3s;user-select:none}
+    .option:hover{transform:scale(1.05);box-shadow:0 5px 15px rgba(0,0,0,.1)}
+    .highspeed{background:#75C5F0}.plane{background:#F0A875}.train{background:#98D876}.bus{background:#5F9DE7}
+    .desc{max-width:800px;margin:0 auto 20px;color:#595959}
+    a{text-decoration:none}
+  </style>
+  <script>
+    function go(url, newWindow){ 
+      if(newWindow) {
+        window.open(url, '_blank')
+      } else {
+        location.href = url
+      }
+    }
+  </script>
   </head>
   <body>
-    <div id="root"></div>
+  <div class="container">
+    <div class="title">
+      若您需要从大连站出发去往别的城市，请根据您以往出行的经历或未来出行计划进行选择，您有如下选择方式：
+    </div>
+
+    <div class="options">
+      <a href="javascript:void(0)" onclick="go('https://www.12306.cn/index/', true)">
+        <div class="option highspeed">普速列车</div>
+      </a>
+
+      <a href="javascript:void(0)" onclick="go('https://flights.ctrip.com/online/channel/domestic', true)">
+        <div class="option plane">飞机</div>
+      </a>
+
+      <!-- 高铁/动车：跳到本系统应用页 -->
+      <a href="javascript:void(0)" onclick="go('/app.html')">
+        <div class="option train">高铁/动车</div>
+      </a>
+
+      <a href="javascript:void(0)" onclick="go('https://mm.ctrip.com/webapp/bus', true)">
+        <div class="option bus">客运/自驾车</div>
+      </a>
+    </div>
+
+    <p class="desc">可通过（单击图标进入购票网页）查询预售期十五天之内上述方式票价以及出行时间信息，确定1种方式，进行购票操作。</p>
+    <p style="color:#f00;font-weight:700">接下来，请开始您的选择</p>
+  </div>
   </body>
 </html>

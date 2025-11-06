@@ -4,11 +4,12 @@
  */
 
 const DB_NAME = 'TrainTicketDB'
-const DB_VERSION = 2
+const DB_VERSION = 4
 const STORE_TICKETS = 'tickets'
 const STORE_STATIONS = 'stations'
 const STORE_ROUTES = 'routes'
 const STORE_PURCHASES = 'purchases' // 购票记录表
+const STORE_SURVEYS = 'surveys' // 问卷表
 
 class DBManager {
   constructor() {
@@ -58,6 +59,13 @@ class DBManager {
           purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
           purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
           purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
+        }
+
+        // 创建问卷存储
+        if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
+          const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
+          surveyStore.createIndex('participantId', 'participantId', { unique: false })
+          surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
         }
       }
     })
@@ -435,6 +443,54 @@ class DBManager {
       const store = transaction.objectStore(STORE_PURCHASES)
       const request = store.clear()
 
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  // 保存问卷
+  async saveSurvey(surveyData) {
+    if (!this.db) await this.init()
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_SURVEYS], 'readwrite')
+      const store = transaction.objectStore(STORE_SURVEYS)
+      const data = {
+        ...surveyData,
+        createdAt: new Date().toISOString(),
+        timestamp: Date.now()
+      }
+      const request = store.add(data)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  // 获取所有问卷
+  async getAllSurveys() {
+    if (!this.db) await this.init()
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_SURVEYS], 'readonly')
+      const store = transaction.objectStore(STORE_SURVEYS)
+      const request = store.getAll()
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async exportSurveysAsJSON() {
+    const surveys = await this.getAllSurveys()
+    return JSON.stringify(surveys, null, 2)
+  }
+
+  // 清空所有问卷数据
+  async clearSurveys() {
+    if (!this.db) await this.init()
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_SURVEYS], 'readwrite')
+      const store = transaction.objectStore(STORE_SURVEYS)
+      const request = store.clear()
       request.onsuccess = () => resolve()
       request.onerror = () => reject(request.error)
       transaction.onerror = () => reject(transaction.error)

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Layout, Typography, Tabs, message } from 'antd'
+import { Layout, Typography, Tabs, Button, Space } from 'antd'
+import { HomeOutlined } from '@ant-design/icons'
 import SearchTicket from './components/SearchTicket'
 import PurchaseRecords from './components/PurchaseRecords'
 import DataManagement from './components/DataManagement'
 import dbManager from './utils/indexedDB'
+import SurveyModal from './components/SurveyModal'
 
 const { Header, Content } = Layout
 const { Title } = Typography
@@ -11,9 +13,15 @@ const { Title } = Typography
 function App() {
   const [dbReady, setDbReady] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [surveyOpen, setSurveyOpen] = useState(false)
 
   useEffect(() => {
     initializeDB()
+    // 若带有 ?survey=1 或 hash #survey，则自动打开问卷
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('survey') === '1' || window.location.hash === '#survey') {
+      setSurveyOpen(true)
+    }
   }, [])
 
   const initializeDB = async () => {
@@ -67,11 +75,34 @@ function App() {
         background: '#1890ff', 
         padding: '0 50px',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        justifyContent: 'space-between'
       }}>
-        <Title level={3} style={{ color: 'white', margin: 0 }}>
-          高铁票价查询系统
-        </Title>
+        <Space>
+          <Button 
+            type="primary"
+            icon={<HomeOutlined />}
+            onClick={() => window.location.href = '/'}
+            style={{ 
+              background: '#fff', 
+              color: '#1890ff',
+              border: 'none',
+              fontWeight: 'bold',
+              fontSize: '14px'
+            }}
+          >
+            返回首页
+          </Button>
+          <Title level={3} style={{ color: 'white', margin: 0 }}>高铁票价查询系统</Title>
+        </Space>
+        <Button 
+          type="text" 
+          size="small" 
+          onClick={() => setSurveyOpen(true)}
+          style={{ color: 'white', fontSize: '12px' }}
+        >
+          问卷
+        </Button>
       </Header>
       <Content style={{ padding: '50px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
         <Tabs
@@ -80,6 +111,7 @@ function App() {
           size="large"
         />
       </Content>
+      <SurveyModal open={surveyOpen} onClose={() => setSurveyOpen(false)} />
     </Layout>
   )
 }

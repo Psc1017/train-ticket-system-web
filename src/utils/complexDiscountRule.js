@@ -340,11 +340,25 @@ export function applyComplexDiscountToTickets(tickets, discountParams) {
   return tickets.map(ticket => {
     // 自动从票价数据中提取发车时间
     const departureTime = ticket.departureTime || '08:00'
-    
+    // 自动按车次匹配 K 值（如未加载映射或未匹配到则回退为 K0）
+    let resolvedK = undefined
+    try {
+      // 动态导入，防止循环依赖
+      // eslint-disable-next-line no-undef
+      const { getKForTrain, TRAVEL_TIME_TYPES: _T } = require('./trainKMap')
+      resolvedK = getKForTrain?.(ticket.trainNumber)
+      if (!resolvedK) {
+        resolvedK = _T?.K0 || TRAVEL_TIME_TYPES.K0
+      }
+    } catch (e) {
+      resolvedK = TRAVEL_TIME_TYPES.K0
+    }
+
     const discountResult = calculateComplexDiscount(ticket.price, {
       ...discountParams,
       departureDate: discountParams.departureDate,
-      departureTime: departureTime
+      departureTime: departureTime,
+      travelTimeType: resolvedK
     })
     
     return {
@@ -353,7 +367,10 @@ export function applyComplexDiscountToTickets(tickets, discountParams) {
       price: discountResult.finalPrice,
       discountRate: discountResult.discountRate,
       discountInfo: discountResult.discountInfo,
-      discountDetails: discountResult.details
+      discountDetails: {
+        ...discountResult.details,
+        resolvedKFromTrainNumber: resolvedK,
+      }
     }
   })
 }

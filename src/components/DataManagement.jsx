@@ -356,6 +356,53 @@ function DataManagement({ dbReady }) {
           </pre>
         </div>
       </Card>
+
+      <Card title="问卷数据">
+        <Space>
+          <Button 
+            icon={<FileExcelOutlined />}
+            onClick={async () => {
+              try {
+                const json = await dbManager.exportSurveysAsJSON()
+                const blob = new Blob([json], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `surveys-${new Date().toISOString().split('T')[0]}.json`
+                a.click()
+                URL.revokeObjectURL(url)
+                message.success('问卷数据已导出')
+              } catch (error) {
+                message.error('导出失败: ' + error.message)
+              }
+            }}
+          >
+            导出问卷JSON
+          </Button>
+          <Button 
+            danger
+            icon={<DeleteOutlined />}
+            onClick={async () => {
+              if (!window.confirm('确定要清空所有问卷数据吗？此操作不可恢复！')) {
+                return
+              }
+              try {
+                if (!dbReady) {
+                  message.error('数据库未初始化')
+                  return
+                }
+                // 清空问卷数据
+                await dbManager.clearSurveys()
+                message.success('问卷数据已清空')
+              } catch (error) {
+                message.error('清空失败: ' + error.message)
+              }
+            }}
+          >
+            清空问卷数据
+          </Button>
+        </Space>
+      </Card>
     </div>
   )
 }
