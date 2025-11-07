@@ -50,9 +50,13 @@ class DBManager {
               this.db = null
             }
             
-            // 监听数据库错误事件
+            // 监听数据库错误事件（只记录严重错误，避免刷屏）
             this.db.onerror = (event) => {
-              console.error('数据库错误:', event)
+              // 只记录非预期的错误，忽略常见的操作错误（如重复键等）
+              const error = event.target?.error
+              if (error && error.name !== 'ConstraintError' && error.name !== 'DataError') {
+                console.error('数据库严重错误:', error)
+              }
             }
             
             console.log('数据库初始化成功')
@@ -143,7 +147,14 @@ class DBManager {
 
         // 批量添加站点，忽略重复错误
         stationsToAdd.forEach(station => {
-          stationStore.add(station).onerror = () => {} // 忽略重复错误
+          const request = stationStore.add(station)
+          request.onerror = (e) => {
+            // 忽略重复键错误（ConstraintError），这是正常的
+            const error = e.target?.error
+            if (error && error.name !== 'ConstraintError') {
+              console.warn('添加站点失败:', station.name, error.message || error)
+            }
+          }
         })
         
         // 等待事务完成
@@ -175,7 +186,11 @@ class DBManager {
           batch.forEach((ticket, idx) => {
             const request = batchStore.add(ticket)
             request.onerror = (e) => {
-              console.error('导入失败:', ticket.trainNumber, e)
+              // 只记录非重复键错误（重复数据是正常的，可以忽略）
+              const error = e.target?.error
+              if (error && error.name !== 'ConstraintError') {
+                console.warn('导入数据失败:', ticket.trainNumber, error.message || error)
+              }
             }
 
             request.onsuccess = () => {
@@ -543,25 +558,62 @@ class DBManager {
 
   // 清空单个存储的辅助方法
   async _clearStore(storeName, storeLabel) {
+    // 确保数据库连接有效
+    if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains(storeName)) {
+      await this.init()
+    }
+
+    if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains(storeName)) {
+      throw new Error(`数据库未初始化或存储 ${storeName} 不存在`)
+    }
+
     return new Promise((resolve, reject) => {
       try {
         const transaction = this.db.transaction([storeName], 'readwrite')
         const store = transaction.objectStore(storeName)
         
+        let hasError = false
+        
         transaction.onerror = (event) => {
-          reject(event.target.error || new Error(`清空${storeLabel}失败`))
+          if (!hasError) {
+            hasError = true
+            const error = event.target?.error || new Error(`清空${storeLabel}失败`)
+            console.error(`清空${storeLabel}事务错误:`, error)
+            reject(error)
+          }
+        }
+        
+        transaction.onabort = () => {
+          if (!hasError) {
+            hasError = true
+            console.error(`清空${storeLabel}事务被中断`)
+            reject(new Error(`清空${storeLabel}操作被中断`))
+          }
         }
         
         transaction.oncomplete = () => {
-          console.log(`${storeLabel}清空完成`)
-          resolve()
+          if (!hasError) {
+            console.log(`${storeLabel}清空完成`)
+            resolve()
+          }
         }
         
         const request = store.clear()
         request.onerror = (event) => {
-          reject(event.target.error || new Error(`清空${storeLabel}请求失败`))
+          if (!hasError) {
+            hasError = true
+            const error = event.target?.error || new Error(`清空${storeLabel}请求失败`)
+            console.error(`清空${storeLabel}请求错误:`, error)
+            reject(error)
+          }
+        }
+        
+        request.onsuccess = () => {
+          // 请求成功，等待事务完成
+          // 事务完成会在 oncomplete 中处理
         }
       } catch (error) {
+        console.error(`清空${storeLabel}异常:`, error)
         reject(error)
       }
     })
