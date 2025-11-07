@@ -61,6 +61,8 @@ function DataManagement({ dbReady }) {
       
       message.success('数据导入成功！')
       setProgress(100)
+      // 触发数据导入完成事件，通知其他组件刷新
+      window.dispatchEvent(new Event('dataImported'))
     } catch (error) {
       message.error('数据导入失败: ' + error.message)
     } finally {
@@ -111,6 +113,8 @@ function DataManagement({ dbReady }) {
       setImportingText('导入完成！')
       console.log('数据导入完成')
       message.success(`文件导入成功！共导入 ${data.length} 条数据`)
+      // 触发数据导入完成事件，通知其他组件刷新
+      window.dispatchEvent(new Event('dataImported'))
       return false
     } catch (error) {
       message.error('文件导入失败: ' + error.message)
@@ -200,6 +204,8 @@ function DataManagement({ dbReady }) {
       setImportingText('导入完成！')
       setProgress(100)
       message.success(`已从数据源导入 ${data.length} 条数据`)
+      // 触发数据导入完成事件，通知其他组件刷新
+      window.dispatchEvent(new Event('dataImported'))
     } catch (error) {
       if (error.name === 'AbortError') {
         message.error('同步超时，请检查网络或稍后重试')

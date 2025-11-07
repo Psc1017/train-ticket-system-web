@@ -14,6 +14,7 @@ function App() {
   const [dbReady, setDbReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [surveyOpen, setSurveyOpen] = useState(false)
+  const [dataRefreshKey, setDataRefreshKey] = useState(0)
 
   useEffect(() => {
     initializeDB()
@@ -22,6 +23,13 @@ function App() {
     if (p.get('survey') === '1' || window.location.hash === '#survey') {
       setSurveyOpen(true)
     }
+
+    // 监听数据导入完成事件
+    const handleDataImported = () => {
+      setDataRefreshKey(prev => prev + 1)
+    }
+    window.addEventListener('dataImported', handleDataImported)
+    return () => window.removeEventListener('dataImported', handleDataImported)
   }, [])
 
   const initializeDB = async () => {
@@ -41,7 +49,7 @@ function App() {
     {
       key: '1',
       label: '票价查询',
-      children: <SearchTicket dbReady={dbReady} />
+      children: <SearchTicket dbReady={dbReady} refreshKey={dataRefreshKey} />
     },
     {
       key: '2',

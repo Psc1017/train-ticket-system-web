@@ -38,7 +38,7 @@ import dayjs from 'dayjs'
 
 const { Option } = Select
 
-function SearchTicket({ dbReady }) {
+function SearchTicket({ dbReady, refreshKey = 0 }) {
   const [form] = Form.useForm()
   const [stations, setStations] = useState([])
   const [loading, setLoading] = useState(false)
@@ -79,7 +79,7 @@ function SearchTicket({ dbReady }) {
   useEffect(() => {
     loadStations()
     loadStatistics()
-  }, [dbReady])
+  }, [dbReady, refreshKey])
 
   const loadStations = async () => {
     try {
