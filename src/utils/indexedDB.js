@@ -514,7 +514,33 @@ class DBManager {
     })
   }
 
-  // 清空数据
+  // 清空单个存储的辅助方法
+  async _clearStore(storeName, storeLabel) {
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db.transaction([storeName], 'readwrite')
+        const store = transaction.objectStore(storeName)
+        
+        transaction.onerror = (event) => {
+          reject(event.target.error || new Error(`清空${storeLabel}失败`))
+        }
+        
+        transaction.oncomplete = () => {
+          console.log(`${storeLabel}清空完成`)
+          resolve()
+        }
+        
+        const request = store.clear()
+        request.onerror = (event) => {
+          reject(event.target.error || new Error(`清空${storeLabel}请求失败`))
+        }
+      } catch (error) {
+        reject(error)
+      }
+    })
+  }
+
+  // 清空数据（只清空票价数据和站点数据，不包括购票记录和问卷数据）
   async clearAll() {
     // 确保数据库连接有效
     if (!this.db || !this.db.objectStoreNames || this.db.objectStoreNames.length === 0) {
@@ -526,57 +552,15 @@ class DBManager {
       throw new Error('数据库初始化失败，无法清空数据')
     }
 
-    // 分别清空两个存储，避免事务冲突
+    // 分别清空票价和站点数据，避免事务冲突
     try {
       // 清空票价数据
-      await new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_TICKETS], 'readwrite')
-          const store = transaction.objectStore(STORE_TICKETS)
-          
-          transaction.onerror = (event) => {
-            reject(event.target.error || new Error('清空票价数据失败'))
-          }
-          
-          transaction.oncomplete = () => {
-            console.log('票价数据清空完成')
-            resolve()
-          }
-          
-          const request = store.clear()
-          request.onerror = (event) => {
-            reject(event.target.error || new Error('清空票价数据请求失败'))
-          }
-        } catch (error) {
-          reject(error)
-        }
-      })
-
+      await this._clearStore(STORE_TICKETS, '票价数据')
+      
       // 清空站点数据
-      await new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_STATIONS], 'readwrite')
-          const store = transaction.objectStore(STORE_STATIONS)
-          
-          transaction.onerror = (event) => {
-            reject(event.target.error || new Error('清空站点数据失败'))
-          }
-          
-          transaction.oncomplete = () => {
-            console.log('站点数据清空完成')
-            resolve()
-          }
-          
-          const request = store.clear()
-          request.onerror = (event) => {
-            reject(event.target.error || new Error('清空站点数据请求失败'))
-          }
-        } catch (error) {
-          reject(error)
-        }
-      })
+      await this._clearStore(STORE_STATIONS, '站点数据')
 
-      console.log('所有数据清空完成')
+      console.log('票价和站点数据清空完成')
     } catch (error) {
       console.error('清空数据失败:', error)
       throw error
