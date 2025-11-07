@@ -18,12 +18,29 @@ class DBManager {
 
   // 初始化数据库
   async init() {
+    // 如果数据库已连接且未关闭，直接返回
+    if (this.db && this.db.objectStoreNames && this.db.objectStoreNames.length > 0) {
+      return this.db
+    }
+
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION)
 
       request.onerror = () => reject(request.error)
       request.onsuccess = () => {
         this.db = request.result
+        
+        // 监听数据库关闭事件
+        this.db.onclose = () => {
+          console.warn('数据库连接已关闭')
+          this.db = null
+        }
+        
+        // 监听数据库错误事件
+        this.db.onerror = (event) => {
+          console.error('数据库错误:', event)
+        }
+        
         resolve(this.db)
       }
 
@@ -499,26 +516,62 @@ class DBManager {
 
   // 清空数据
   async clearAll() {
-    if (!this.db) await this.init()
+    // 确保数据库连接有效
+    if (!this.db || !this.db.objectStoreNames || this.db.objectStoreNames.length === 0) {
+      await this.init()
+    }
+
+    // 再次检查连接
+    if (!this.db || !this.db.objectStoreNames || this.db.objectStoreNames.length === 0) {
+      throw new Error('数据库初始化失败，无法清空数据')
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([STORE_TICKETS, STORE_STATIONS], 'readwrite')
-      const ticketStore = transaction.objectStore(STORE_TICKETS)
-      const stationStore = transaction.objectStore(STORE_STATIONS)
+      try {
+        const transaction = this.db.transaction([STORE_TICKETS, STORE_STATIONS], 'readwrite')
+        
+        // 设置事务错误处理
+        transaction.onerror = (event) => {
+          console.error('清空数据事务错误:', event.target.error)
+          reject(event.target.error || new Error('清空数据事务失败'))
+        }
 
-      const ticketRequest = ticketStore.clear()
-      const stationRequest = stationStore.clear()
+        // 设置事务完成处理
+        transaction.oncomplete = () => {
+          console.log('数据清空完成')
+          resolve()
+        }
 
-      Promise.all([
-        new Promise((res) => {
-          ticketRequest.onsuccess = () => res()
-          ticketRequest.onerror = () => reject(ticketRequest.error)
-        }),
-        new Promise((res) => {
-          stationRequest.onsuccess = () => res()
-          stationRequest.onerror = () => reject(stationRequest.error)
-        })
-      ]).then(() => resolve())
+        // 设置事务中断处理
+        transaction.onabort = () => {
+          console.error('清空数据事务被中断')
+          reject(new Error('清空数据操作被中断'))
+        }
+
+        const ticketStore = transaction.objectStore(STORE_TICKETS)
+        const stationStore = transaction.objectStore(STORE_STATIONS)
+
+        // 执行清空操作
+        const ticketRequest = ticketStore.clear()
+        const stationRequest = stationStore.clear()
+
+        // 设置请求错误处理
+        ticketRequest.onerror = (event) => {
+          console.error('清空票价数据失败:', event.target.error)
+          reject(event.target.error || new Error('清空票价数据失败'))
+        }
+
+        stationRequest.onerror = (event) => {
+          console.error('清空站点数据失败:', event.target.error)
+          reject(event.target.error || new Error('清空站点数据失败'))
+        }
+
+        // 如果两个请求都成功，事务会在 oncomplete 中完成
+        // 这里不需要额外处理，因为事务会自动管理
+      } catch (error) {
+        console.error('清空数据异常:', error)
+        reject(error)
+      }
     })
   }
 }
