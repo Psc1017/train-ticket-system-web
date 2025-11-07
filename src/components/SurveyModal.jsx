@@ -28,24 +28,6 @@ function SurveyModal({ open, onClose }) {
     }
   }
 
-  // 出行意向调查的13个问题
-  const intentionQuestions = [
-    '对我来说，进行该方式出行能够满足我的出行需求',
-    '对我来说，选择该方式出行很方便',
-    '我周围的人推荐我选择该方式出行',
-    '我周围有较多的人愿意选择该方式出行',
-    '对我来说，选择该方式出行比其他出行方式更好',
-    '对我来说，该出行方式乘坐过程中人身安全以及财产安全有保障',
-    '对我来说，该出行方式的换乘、候车以及购票很方便',
-    '对我来说，该出行方式行驶稳定、座椅舒适',
-    '对我来说，选择该出行方式已经成为我的固有习惯',
-    '下次出行时，我会不假思索的选择该出行方式',
-    '我基本不会考虑选择该出行方式之外的其他方式出行',
-    '我愿意将该出行方式推荐给身边人',
-    '下次出行时，我会优先考虑选择该出行方式'
-  ]
-
-
   return (
     <Modal 
       open={open} 
@@ -177,36 +159,6 @@ function SurveyModal({ open, onClose }) {
             <Radio value="3">3) 不确定</Radio>
           </Radio.Group>
         </Form.Item>
-
-        {/* 四、出行意向调查 */}
-        <Divider orientation="left">四、出行意向调查</Divider>
-        <p style={{ marginBottom: 15, color: '#666' }}>
-          该部分为意向调查，请您根据您之前出行经历或者未来自身意向选择，描述您对此次选择的出行方式（高铁/动车、普通列车、民航、公路运输）的看法。针对下列题目，请在符合您情况的选项下打"✓"
-        </p>
-
-        <div style={{ marginBottom: 20 }}>
-          {intentionQuestions.map((question, idx) => (
-            <Form.Item
-              key={idx + 1}
-              name={`q${idx + 1}`}
-              rules={[{ required: true, message: `请选择第${idx + 1}题` }]}
-              style={{ marginBottom: 15 }}
-            >
-              <div>
-                <div style={{ marginBottom: 8, fontWeight: 500 }}>
-                  {idx + 1}. {question}
-                </div>
-                <Radio.Group>
-                  <Radio value="1">非常不同意</Radio>
-                  <Radio value="2">不同意</Radio>
-                  <Radio value="3">一般</Radio>
-                  <Radio value="4">同意</Radio>
-                  <Radio value="5">非常同意</Radio>
-                </Radio.Group>
-              </div>
-            </Form.Item>
-          ))}
-        </div>
 
         {/* 参与者编号（用于数据关联） */}
         <Form.Item label="参与者编号" name="participantId" style={{ marginTop: 20 }}>
