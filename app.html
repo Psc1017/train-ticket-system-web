@@ -5,6 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>高铁票价查询系统</title>
+    <!-- Eruda 移动端调试工具 - 生产环境可通过 URL 参数 ?debug=1 启用 -->
+    <script>
+      (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isDebug = urlParams.get('debug') === '1' || localStorage.getItem('eruda-debug') === 'true';
+        if (isDebug) {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/eruda@3.0.1/eruda.js';
+          script.onload = function() {
+            eruda.init();
+            console.log('调试工具已启用！');
+          };
+          document.head.appendChild(script);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
