@@ -19,71 +19,98 @@ class DBManager {
   // 初始化数据库
   async init() {
     // 如果数据库已连接且未关闭，直接返回
-    if (this.db && this.db.objectStoreNames && this.db.objectStoreNames.length > 0) {
-      return this.db
+    if (this.db) {
+      try {
+        // 检查数据库连接是否有效
+        if (this.db.objectStoreNames && this.db.objectStoreNames.length > 0) {
+          return this.db
+        }
+      } catch (e) {
+        // 如果检查失败，说明连接已关闭，需要重新打开
+        this.db = null
+      }
     }
 
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      try {
+        const request = indexedDB.open(DB_NAME, DB_VERSION)
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => {
-        this.db = request.result
-        
-        // 监听数据库关闭事件
-        this.db.onclose = () => {
-          console.warn('数据库连接已关闭')
-          this.db = null
+        request.onerror = (event) => {
+          console.error('打开数据库失败:', event.target.error)
+          reject(event.target.error || new Error('无法打开数据库'))
         }
         
-        // 监听数据库错误事件
-        this.db.onerror = (event) => {
-          console.error('数据库错误:', event)
+        request.onsuccess = () => {
+          try {
+            this.db = request.result
+            
+            // 监听数据库关闭事件
+            this.db.onclose = () => {
+              console.warn('数据库连接已关闭')
+              this.db = null
+            }
+            
+            // 监听数据库错误事件
+            this.db.onerror = (event) => {
+              console.error('数据库错误:', event)
+            }
+            
+            console.log('数据库初始化成功')
+            resolve(this.db)
+          } catch (error) {
+            console.error('数据库初始化后处理失败:', error)
+            reject(error)
+          }
         }
         
-        resolve(this.db)
-      }
-
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result
-
-        // 创建票价数据存储
-        if (!db.objectStoreNames.contains(STORE_TICKETS)) {
-          const ticketStore = db.createObjectStore(STORE_TICKETS, { keyPath: 'id', autoIncrement: true })
-          ticketStore.createIndex('fromStation', 'fromStation', { unique: false })
-          ticketStore.createIndex('toStation', 'toStation', { unique: false })
-          ticketStore.createIndex('trainNumber', 'trainNumber', { unique: false })
-          ticketStore.createIndex('departureTime', 'departureTime', { unique: false })
+        request.onblocked = () => {
+          console.warn('数据库升级被阻塞，请关闭其他标签页')
         }
 
-        // 创建站点数据存储
-        if (!db.objectStoreNames.contains(STORE_STATIONS)) {
-          const stationStore = db.createObjectStore(STORE_STATIONS, { keyPath: 'id', autoIncrement: true })
-          stationStore.createIndex('name', 'name', { unique: true })
-          stationStore.createIndex('code', 'code', { unique: true })
-        }
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result
 
-        // 创建路线数据存储
-        if (!db.objectStoreNames.contains(STORE_ROUTES)) {
-          const routeStore = db.createObjectStore(STORE_ROUTES, { keyPath: 'id', autoIncrement: true })
-          routeStore.createIndex('fromTo', ['fromStation', 'toStation'], { unique: false })
-        }
+          // 创建票价数据存储
+          if (!db.objectStoreNames.contains(STORE_TICKETS)) {
+            const ticketStore = db.createObjectStore(STORE_TICKETS, { keyPath: 'id', autoIncrement: true })
+            ticketStore.createIndex('fromStation', 'fromStation', { unique: false })
+            ticketStore.createIndex('toStation', 'toStation', { unique: false })
+            ticketStore.createIndex('trainNumber', 'trainNumber', { unique: false })
+            ticketStore.createIndex('departureTime', 'departureTime', { unique: false })
+          }
 
-        // 创建购票记录存储
-        if (!db.objectStoreNames.contains(STORE_PURCHASES)) {
-          const purchaseStore = db.createObjectStore(STORE_PURCHASES, { keyPath: 'id', autoIncrement: true })
-          purchaseStore.createIndex('participantId', 'participantId', { unique: false })
-          purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
-          purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
-          purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
-        }
+          // 创建站点数据存储
+          if (!db.objectStoreNames.contains(STORE_STATIONS)) {
+            const stationStore = db.createObjectStore(STORE_STATIONS, { keyPath: 'id', autoIncrement: true })
+            stationStore.createIndex('name', 'name', { unique: true })
+            stationStore.createIndex('code', 'code', { unique: true })
+          }
 
-        // 创建问卷存储
-        if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
-          const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
-          surveyStore.createIndex('participantId', 'participantId', { unique: false })
-          surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
+          // 创建路线数据存储
+          if (!db.objectStoreNames.contains(STORE_ROUTES)) {
+            const routeStore = db.createObjectStore(STORE_ROUTES, { keyPath: 'id', autoIncrement: true })
+            routeStore.createIndex('fromTo', ['fromStation', 'toStation'], { unique: false })
+          }
+
+          // 创建购票记录存储
+          if (!db.objectStoreNames.contains(STORE_PURCHASES)) {
+            const purchaseStore = db.createObjectStore(STORE_PURCHASES, { keyPath: 'id', autoIncrement: true })
+            purchaseStore.createIndex('participantId', 'participantId', { unique: false })
+            purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
+            purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
+            purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
+          }
+
+          // 创建问卷存储
+          if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
+            const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
+            surveyStore.createIndex('participantId', 'participantId', { unique: false })
+            surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
+          }
         }
+      } catch (error) {
+        console.error('数据库初始化异常:', error)
+        reject(error)
       }
     })
   }
