@@ -33,16 +33,16 @@ class DBManager {
 
     return new Promise((resolve, reject) => {
       try {
-        const request = indexedDB.open(DB_NAME, DB_VERSION)
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
 
         request.onerror = (event) => {
           console.error('打开数据库失败:', event.target.error)
           reject(event.target.error || new Error('无法打开数据库'))
         }
         
-        request.onsuccess = () => {
+      request.onsuccess = () => {
           try {
-            this.db = request.result
+        this.db = request.result
             
             // 监听数据库关闭事件
             this.db.onclose = () => {
@@ -60,7 +60,7 @@ class DBManager {
             }
             
             console.log('数据库初始化成功')
-            resolve(this.db)
+        resolve(this.db)
           } catch (error) {
             console.error('数据库初始化后处理失败:', error)
             reject(error)
@@ -69,48 +69,48 @@ class DBManager {
         
         request.onblocked = () => {
           console.warn('数据库升级被阻塞，请关闭其他标签页')
+      }
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result
+
+        // 创建票价数据存储
+        if (!db.objectStoreNames.contains(STORE_TICKETS)) {
+          const ticketStore = db.createObjectStore(STORE_TICKETS, { keyPath: 'id', autoIncrement: true })
+          ticketStore.createIndex('fromStation', 'fromStation', { unique: false })
+          ticketStore.createIndex('toStation', 'toStation', { unique: false })
+          ticketStore.createIndex('trainNumber', 'trainNumber', { unique: false })
+          ticketStore.createIndex('departureTime', 'departureTime', { unique: false })
         }
 
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result
+        // 创建站点数据存储
+        if (!db.objectStoreNames.contains(STORE_STATIONS)) {
+          const stationStore = db.createObjectStore(STORE_STATIONS, { keyPath: 'id', autoIncrement: true })
+          stationStore.createIndex('name', 'name', { unique: true })
+          stationStore.createIndex('code', 'code', { unique: true })
+        }
 
-          // 创建票价数据存储
-          if (!db.objectStoreNames.contains(STORE_TICKETS)) {
-            const ticketStore = db.createObjectStore(STORE_TICKETS, { keyPath: 'id', autoIncrement: true })
-            ticketStore.createIndex('fromStation', 'fromStation', { unique: false })
-            ticketStore.createIndex('toStation', 'toStation', { unique: false })
-            ticketStore.createIndex('trainNumber', 'trainNumber', { unique: false })
-            ticketStore.createIndex('departureTime', 'departureTime', { unique: false })
-          }
+        // 创建路线数据存储
+        if (!db.objectStoreNames.contains(STORE_ROUTES)) {
+          const routeStore = db.createObjectStore(STORE_ROUTES, { keyPath: 'id', autoIncrement: true })
+          routeStore.createIndex('fromTo', ['fromStation', 'toStation'], { unique: false })
+        }
 
-          // 创建站点数据存储
-          if (!db.objectStoreNames.contains(STORE_STATIONS)) {
-            const stationStore = db.createObjectStore(STORE_STATIONS, { keyPath: 'id', autoIncrement: true })
-            stationStore.createIndex('name', 'name', { unique: true })
-            stationStore.createIndex('code', 'code', { unique: true })
-          }
+        // 创建购票记录存储
+        if (!db.objectStoreNames.contains(STORE_PURCHASES)) {
+          const purchaseStore = db.createObjectStore(STORE_PURCHASES, { keyPath: 'id', autoIncrement: true })
+          purchaseStore.createIndex('participantId', 'participantId', { unique: false })
+          purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
+          purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
+          purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
+        }
 
-          // 创建路线数据存储
-          if (!db.objectStoreNames.contains(STORE_ROUTES)) {
-            const routeStore = db.createObjectStore(STORE_ROUTES, { keyPath: 'id', autoIncrement: true })
-            routeStore.createIndex('fromTo', ['fromStation', 'toStation'], { unique: false })
-          }
-
-          // 创建购票记录存储
-          if (!db.objectStoreNames.contains(STORE_PURCHASES)) {
-            const purchaseStore = db.createObjectStore(STORE_PURCHASES, { keyPath: 'id', autoIncrement: true })
-            purchaseStore.createIndex('participantId', 'participantId', { unique: false })
-            purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
-            purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
-            purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
-          }
-
-          // 创建问卷存储
-          if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
-            const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
-            surveyStore.createIndex('participantId', 'participantId', { unique: false })
-            surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
-          }
+        // 创建问卷存储
+        if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
+          const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
+          surveyStore.createIndex('participantId', 'participantId', { unique: false })
+          surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
+        }
         }
       } catch (error) {
         console.error('数据库初始化异常:', error)
@@ -123,25 +123,25 @@ class DBManager {
   async importTickets(tickets) {
     if (!this.db) await this.init()
 
-    // 提取所有唯一的站点
-    const uniqueStations = new Set()
-    tickets.forEach(ticket => {
-      if (ticket.fromStation) uniqueStations.add(ticket.fromStation)
-      if (ticket.toStation) uniqueStations.add(ticket.toStation)
-    })
+      // 提取所有唯一的站点
+      const uniqueStations = new Set()
+      tickets.forEach(ticket => {
+        if (ticket.fromStation) uniqueStations.add(ticket.fromStation)
+        if (ticket.toStation) uniqueStations.add(ticket.toStation)
+      })
 
-    // 批量导入站点数据（更快的方式）
-    try {
-      const stationTransaction = this.db.transaction([STORE_STATIONS], 'readwrite')
-      const stationStore = stationTransaction.objectStore(STORE_STATIONS)
-      
-      const stationsToAdd = Array.from(uniqueStations).map(name => ({
-        name,
-        code: name.replace(/[^A-Z0-9]/g, '')
-      }))
+      // 批量导入站点数据（更快的方式）
+      try {
+        const stationTransaction = this.db.transaction([STORE_STATIONS], 'readwrite')
+        const stationStore = stationTransaction.objectStore(STORE_STATIONS)
+        
+        const stationsToAdd = Array.from(uniqueStations).map(name => ({
+          name,
+          code: name.replace(/[^A-Z0-9]/g, '')
+        }))
 
-      // 批量添加站点，忽略重复错误
-      stationsToAdd.forEach(station => {
+        // 批量添加站点，忽略重复错误
+        stationsToAdd.forEach(station => {
         const request = stationStore.add(station)
         request.onerror = (e) => {
           // 忽略重复键错误（ConstraintError），这是正常的
@@ -150,25 +150,25 @@ class DBManager {
             console.warn('添加站点失败:', station.name, error.message || error)
           }
         }
-      })
-      
-      // 等待事务完成
-      await new Promise(resolve => {
-        stationTransaction.oncomplete = () => resolve()
+        })
+        
+        // 等待事务完成
+        await new Promise(resolve => {
+          stationTransaction.oncomplete = () => resolve()
         stationTransaction.onerror = () => resolve() // 即使有错误也继续
-      })
-      
-      console.log(`已导入/更新站点数据`)
-    } catch (error) {
-      console.error('导入站点失败（可忽略）:', error)
-    }
+        })
+        
+        console.log(`已导入/更新站点数据`)
+      } catch (error) {
+        console.error('导入站点失败（可忽略）:', error)
+      }
 
     // 分批导入票价数据
     const batchSize = 10000
-    let count = 0
-    const totalBatches = Math.ceil(tickets.length / batchSize)
+      let count = 0
+      const totalBatches = Math.ceil(tickets.length / batchSize)
 
-    const importBatch = async (batchIndex) => {
+      const importBatch = async (batchIndex) => {
       return new Promise((resolve, reject) => {
         // 为每个批次创建新的事务
         const batchTransaction = this.db.transaction([STORE_TICKETS], 'readwrite')
@@ -184,11 +184,11 @@ class DBManager {
         // 设置事务完成处理
         batchTransaction.oncomplete = () => {
           count += successCount
-          console.log(`已导入 ${count} / ${tickets.length} 条数据`)
-          
-          if (batchIndex === totalBatches - 1) {
-            resolve(count)
-          } else {
+                console.log(`已导入 ${count} / ${tickets.length} 条数据`)
+                
+                if (batchIndex === totalBatches - 1) {
+                  resolve(count)
+                } else {
             // 继续下一批
             setTimeout(() => {
               importBatch(batchIndex + 1).then(resolve).catch(reject)
@@ -569,15 +569,36 @@ class DBManager {
     })
   }
 
+  // 检查数据库连接是否有效
+  _checkConnection() {
+    try {
+      if (!this.db) return false
+      // 尝试访问 objectStoreNames，如果连接丢失会抛出异常
+      const names = this.db.objectStoreNames
+      return names && names.length > 0
+    } catch (error) {
+      console.warn('数据库连接检查失败:', error)
+      this.db = null
+      return false
+    }
+  }
+
   // 清空单个存储的辅助方法
-  async _clearStore(storeName, storeLabel) {
+  async _clearStore(storeName, storeLabel, retryCount = 0) {
+    const maxRetries = 2
+    
     // 确保数据库连接有效
-    if (!this.db) {
-      await this.init()
+    if (!this._checkConnection()) {
+      console.log('数据库连接丢失，重新初始化...')
+      try {
+        await this.init()
+      } catch (error) {
+        throw new Error('数据库连接丢失，请刷新页面后重试')
+      }
     }
 
-    if (!this.db) {
-      throw new Error('数据库未初始化')
+    if (!this._checkConnection()) {
+      throw new Error('数据库初始化失败，请刷新页面后重试')
     }
 
     // 检查存储是否存在
@@ -608,8 +629,24 @@ class DBManager {
           if (!resolved) {
             resolved = true
             const error = event.target?.error || transaction.error
-            console.error(`清空${storeLabel}事务错误:`, error)
-            reject(error || new Error(`清空${storeLabel}失败`))
+            const errorMessage = error?.message || error?.toString() || ''
+            
+            // 如果是连接丢失错误，尝试重试
+            if ((errorMessage.includes('lost') || errorMessage.includes('closed')) && retryCount < maxRetries) {
+              console.log(`连接丢失，尝试重试 (${retryCount + 1}/${maxRetries})...`)
+              this.db = null // 重置连接
+              setTimeout(async () => {
+                try {
+                  await this._clearStore(storeName, storeLabel, retryCount + 1)
+                  resolve()
+                } catch (retryError) {
+                  reject(retryError)
+                }
+              }, 500)
+            } else {
+              console.error(`清空${storeLabel}事务错误:`, error)
+              reject(error || new Error(`清空${storeLabel}失败`))
+            }
           }
         }
         
@@ -617,8 +654,22 @@ class DBManager {
         transaction.onabort = () => {
           if (!resolved) {
             resolved = true
-            console.error(`清空${storeLabel}事务被中断`)
-            reject(new Error(`清空${storeLabel}操作被中断`))
+            // 如果是连接问题，尝试重试
+            if (retryCount < maxRetries) {
+              console.log(`事务中断，尝试重试 (${retryCount + 1}/${maxRetries})...`)
+              this.db = null
+              setTimeout(async () => {
+                try {
+                  await this._clearStore(storeName, storeLabel, retryCount + 1)
+                  resolve()
+                } catch (retryError) {
+                  reject(retryError)
+                }
+              }, 500)
+            } else {
+              console.error(`清空${storeLabel}事务被中断`)
+              reject(new Error(`清空${storeLabel}操作被中断，请刷新页面后重试`))
+            }
           }
         }
         
@@ -634,14 +685,44 @@ class DBManager {
           if (!resolved) {
             resolved = true
             const error = event.target?.error
-            console.error(`清空${storeLabel}请求错误:`, error)
-            reject(error || new Error(`清空${storeLabel}请求失败`))
+            const errorMessage = error?.message || error?.toString() || ''
+            
+            // 如果是连接丢失错误，尝试重试
+            if ((errorMessage.includes('lost') || errorMessage.includes('closed')) && retryCount < maxRetries) {
+              console.log(`请求失败，尝试重试 (${retryCount + 1}/${maxRetries})...`)
+              this.db = null
+              setTimeout(async () => {
+                try {
+                  await this._clearStore(storeName, storeLabel, retryCount + 1)
+                  resolve()
+                } catch (retryError) {
+                  reject(retryError)
+                }
+              }, 500)
+            } else {
+              console.error(`清空${storeLabel}请求错误:`, error)
+              reject(error || new Error(`清空${storeLabel}请求失败`))
+            }
           }
         }
         
       } catch (error) {
         console.error(`清空${storeLabel}异常:`, error)
-        reject(error)
+        // 如果是连接问题，尝试重试
+        if (retryCount < maxRetries && (error.message?.includes('lost') || error.message?.includes('closed'))) {
+          console.log(`异常，尝试重试 (${retryCount + 1}/${maxRetries})...`)
+          this.db = null
+          setTimeout(async () => {
+            try {
+              await this._clearStore(storeName, storeLabel, retryCount + 1)
+              resolve()
+            } catch (retryError) {
+              reject(retryError)
+            }
+          }, 500)
+        } else {
+          reject(error)
+        }
       }
     })
   }
