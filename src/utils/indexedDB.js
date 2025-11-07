@@ -123,55 +123,53 @@ class DBManager {
   async importTickets(tickets) {
     if (!this.db) await this.init()
 
-    return new Promise(async (resolve, reject) => {
-      const transaction = this.db.transaction([STORE_TICKETS], 'readwrite')
-      const store = transaction.objectStore(STORE_TICKETS)
-      const batchSize = 10000 // 分批处理，每批10000条
+    // 提取所有唯一的站点
+    const uniqueStations = new Set()
+    tickets.forEach(ticket => {
+      if (ticket.fromStation) uniqueStations.add(ticket.fromStation)
+      if (ticket.toStation) uniqueStations.add(ticket.toStation)
+    })
 
-      // 提取所有唯一的站点
-      const uniqueStations = new Set()
-      tickets.forEach(ticket => {
-        if (ticket.fromStation) uniqueStations.add(ticket.fromStation)
-        if (ticket.toStation) uniqueStations.add(ticket.toStation)
-      })
+    // 批量导入站点数据（更快的方式）
+    try {
+      const stationTransaction = this.db.transaction([STORE_STATIONS], 'readwrite')
+      const stationStore = stationTransaction.objectStore(STORE_STATIONS)
+      
+      const stationsToAdd = Array.from(uniqueStations).map(name => ({
+        name,
+        code: name.replace(/[^A-Z0-9]/g, '')
+      }))
 
-      // 批量导入站点数据（更快的方式）
-      try {
-        const stationTransaction = this.db.transaction([STORE_STATIONS], 'readwrite')
-        const stationStore = stationTransaction.objectStore(STORE_STATIONS)
-        
-        const stationsToAdd = Array.from(uniqueStations).map(name => ({
-          name,
-          code: name.replace(/[^A-Z0-9]/g, '')
-        }))
-
-        // 批量添加站点，忽略重复错误
-        stationsToAdd.forEach(station => {
-          const request = stationStore.add(station)
-          request.onerror = (e) => {
-            // 忽略重复键错误（ConstraintError），这是正常的
-            const error = e.target?.error
-            if (error && error.name !== 'ConstraintError') {
-              console.warn('添加站点失败:', station.name, error.message || error)
-            }
+      // 批量添加站点，忽略重复错误
+      stationsToAdd.forEach(station => {
+        const request = stationStore.add(station)
+        request.onerror = (e) => {
+          // 忽略重复键错误（ConstraintError），这是正常的
+          const error = e.target?.error
+          if (error && error.name !== 'ConstraintError') {
+            console.warn('添加站点失败:', station.name, error.message || error)
           }
-        })
-        
-        // 等待事务完成
-        await new Promise(resolve => {
-          stationTransaction.oncomplete = () => resolve()
-          stationTransaction.onerror = () => resolve()
-        })
-        
-        console.log(`已导入/更新站点数据`)
-      } catch (error) {
-        console.error('导入站点失败（可忽略）:', error)
-      }
+        }
+      })
+      
+      // 等待事务完成
+      await new Promise(resolve => {
+        stationTransaction.oncomplete = () => resolve()
+        stationTransaction.onerror = () => resolve() // 即使有错误也继续
+      })
+      
+      console.log(`已导入/更新站点数据`)
+    } catch (error) {
+      console.error('导入站点失败（可忽略）:', error)
+    }
 
-      let count = 0
-      const totalBatches = Math.ceil(tickets.length / batchSize)
+    // 分批导入票价数据
+    const batchSize = 10000
+    let count = 0
+    const totalBatches = Math.ceil(tickets.length / batchSize)
 
-      const importBatch = async (batchIndex) => {
+    const importBatch = async (batchIndex) => {
+      return new Promise((resolve, reject) => {
         // 为每个批次创建新的事务
         const batchTransaction = this.db.transaction([STORE_TICKETS], 'readwrite')
         const batchStore = batchTransaction.objectStore(STORE_TICKETS)
@@ -180,48 +178,63 @@ class DBManager {
         const end = Math.min(start + batchSize, tickets.length)
         const batch = tickets.slice(start, end)
 
-        return new Promise((res, rej) => {
-          let completedInBatch = 0
+        let successCount = 0
+        let errorCount = 0
 
-          batch.forEach((ticket, idx) => {
-            const request = batchStore.add(ticket)
-            request.onerror = (e) => {
-              // 只记录非重复键错误（重复数据是正常的，可以忽略）
-              const error = e.target?.error
-              if (error && error.name !== 'ConstraintError') {
-                console.warn('导入数据失败:', ticket.trainNumber, error.message || error)
-              }
-            }
+        // 设置事务完成处理
+        batchTransaction.oncomplete = () => {
+          count += successCount
+          console.log(`已导入 ${count} / ${tickets.length} 条数据`)
+          
+          if (batchIndex === totalBatches - 1) {
+            resolve(count)
+          } else {
+            // 继续下一批
+            setTimeout(() => {
+              importBatch(batchIndex + 1).then(resolve).catch(reject)
+            }, 50)
+          }
+        }
 
-            request.onsuccess = () => {
-              completedInBatch++
-              if (completedInBatch === batch.length) {
-                count += batch.length
-                console.log(`已导入 ${count} / ${tickets.length} 条数据`)
-                
-                if (batchIndex === totalBatches - 1) {
-                  resolve(count)
-                } else {
-                  res()
-                }
-              }
+        // 设置事务错误处理（不中断整个导入）
+        batchTransaction.onerror = (event) => {
+          const error = event.target?.error
+          if (error && error.name !== 'AbortError') {
+            console.warn(`批次 ${batchIndex + 1} 事务错误:`, error)
+          }
+          // 即使有错误也继续下一批
+          count += successCount
+          if (batchIndex === totalBatches - 1) {
+            resolve(count)
+          } else {
+            setTimeout(() => {
+              importBatch(batchIndex + 1).then(resolve).catch(reject)
+            }, 50)
+          }
+        }
+
+        // 添加数据
+        batch.forEach((ticket) => {
+          const request = batchStore.add(ticket)
+          
+          request.onsuccess = () => {
+            successCount++
+          }
+          
+          request.onerror = (e) => {
+            errorCount++
+            // 只记录非重复键错误
+            const error = e.target?.error
+            if (error && error.name !== 'ConstraintError') {
+              // 不输出警告，避免刷屏
             }
-          })
-        }).then(() => {
-          // 继续下一批
-          if (batchIndex < totalBatches - 1) {
-            return new Promise(r => setTimeout(() => {
-              importBatch(batchIndex + 1).then(() => r())
-            }, 50))
           }
         })
-      }
+      })
+    }
 
-      transaction.onerror = () => reject(transaction.error)
-      
-      // 导入票价数据
-      importBatch(0)
-    })
+    // 开始导入
+    return await importBatch(0)
   }
 
   // 批量导入站点数据
