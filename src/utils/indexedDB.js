@@ -559,59 +559,73 @@ class DBManager {
   // 清空单个存储的辅助方法
   async _clearStore(storeName, storeLabel) {
     // 确保数据库连接有效
-    if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains(storeName)) {
+    if (!this.db) {
       await this.init()
     }
 
-    if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains(storeName)) {
-      throw new Error(`数据库未初始化或存储 ${storeName} 不存在`)
+    if (!this.db) {
+      throw new Error('数据库未初始化')
+    }
+
+    // 检查存储是否存在
+    if (!this.db.objectStoreNames.contains(storeName)) {
+      console.warn(`存储 ${storeName} 不存在，跳过清空`)
+      return
     }
 
     return new Promise((resolve, reject) => {
       try {
+        // 创建事务
         const transaction = this.db.transaction([storeName], 'readwrite')
         const store = transaction.objectStore(storeName)
         
-        let hasError = false
+        let resolved = false
         
-        transaction.onerror = (event) => {
-          if (!hasError) {
-            hasError = true
-            const error = event.target?.error || new Error(`清空${storeLabel}失败`)
-            console.error(`清空${storeLabel}事务错误:`, error)
-            reject(error)
-          }
-        }
-        
-        transaction.onabort = () => {
-          if (!hasError) {
-            hasError = true
-            console.error(`清空${storeLabel}事务被中断`)
-            reject(new Error(`清空${storeLabel}操作被中断`))
-          }
-        }
-        
+        // 设置事务完成处理（这是最可靠的方式）
         transaction.oncomplete = () => {
-          if (!hasError) {
+          if (!resolved) {
+            resolved = true
             console.log(`${storeLabel}清空完成`)
             resolve()
           }
         }
         
-        const request = store.clear()
-        request.onerror = (event) => {
-          if (!hasError) {
-            hasError = true
-            const error = event.target?.error || new Error(`清空${storeLabel}请求失败`)
-            console.error(`清空${storeLabel}请求错误:`, error)
-            reject(error)
+        // 设置事务错误处理
+        transaction.onerror = (event) => {
+          if (!resolved) {
+            resolved = true
+            const error = event.target?.error || transaction.error
+            console.error(`清空${storeLabel}事务错误:`, error)
+            reject(error || new Error(`清空${storeLabel}失败`))
           }
         }
         
-        request.onsuccess = () => {
-          // 请求成功，等待事务完成
-          // 事务完成会在 oncomplete 中处理
+        // 设置事务中断处理
+        transaction.onabort = () => {
+          if (!resolved) {
+            resolved = true
+            console.error(`清空${storeLabel}事务被中断`)
+            reject(new Error(`清空${storeLabel}操作被中断`))
+          }
         }
+        
+        // 执行清空操作（必须在设置事件处理器之后）
+        const request = store.clear()
+        
+        request.onsuccess = () => {
+          // 请求成功，但需要等待事务完成
+          // 不要在这里 resolve，等待 oncomplete
+        }
+        
+        request.onerror = (event) => {
+          if (!resolved) {
+            resolved = true
+            const error = event.target?.error
+            console.error(`清空${storeLabel}请求错误:`, error)
+            reject(error || new Error(`清空${storeLabel}请求失败`))
+          }
+        }
+        
       } catch (error) {
         console.error(`清空${storeLabel}异常:`, error)
         reject(error)
