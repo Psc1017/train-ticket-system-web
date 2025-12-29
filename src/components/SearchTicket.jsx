@@ -29,7 +29,6 @@ import { applyDiscountToTickets, getDiscountInfo } from '../utils/discountRule'
 import { 
   applyComplexDiscountToTickets, 
   getComplexDiscountInfo,
-  PRICE_FLOAT_SCENARIOS,
   DATE_TYPES,
   TIME_PERIODS
 } from '../utils/complexDiscountRule'
@@ -52,7 +51,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
   
   // 复杂折扣参数
   const [useComplexDiscount, setUseComplexDiscount] = useState(false)
-  const [priceFloatScenario, setPriceFloatScenario] = useState(PRICE_FLOAT_SCENARIOS.FLOAT_10)
   // 预加载车次-K映射
   useEffect(() => { ensureKMap() }, [])
 
@@ -130,7 +128,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       let discountedTickets
       if (useComplexDiscount) {
         discountedTickets = applyComplexDiscountToTickets(results, {
-          priceFloatScenario,
           departureDate: travelDate.format('YYYY-MM-DD'),
           advanceDays: daysDiff
         })
@@ -163,12 +160,11 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
           calcDays = 15
         }
         const discountedTickets = applyComplexDiscountToTickets(tickets, {
-          priceFloatScenario,
           departureDate: dayjs().format('YYYY-MM-DD'),
           advanceDays: calcDays
         })
         setTickets(discountedTickets)
-        message.info(`已更新复杂折扣: ${getComplexDiscountInfo({ priceFloatScenario })}`)
+        message.info(`已更新复杂折扣`)
       } else {
         const discountedTickets = applyDiscountToTickets(tickets, days)
         setTickets(discountedTickets)
@@ -194,7 +190,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     if (tickets.length > 0) {
       if (useComplexDiscount) {
         const discountedTickets = applyComplexDiscountToTickets(tickets, {
-          priceFloatScenario,
           departureDate: dayjs().format('YYYY-MM-DD'),
           advanceDays: calcDays
         })
@@ -460,29 +455,15 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
             </Col>
             
             {useComplexDiscount && (
-              <>
-                <Col span={6}>
-                  <Form.Item label="票价浮动情景">
-                    <Select
-                      value={priceFloatScenario}
-                      onChange={setPriceFloatScenario}
-                    >
-                      <Option value={PRICE_FLOAT_SCENARIOS.FLOAT_10}>10%浮动</Option>
-                      <Option value={PRICE_FLOAT_SCENARIOS.FLOAT_20}>20%浮动</Option>
-                      <Option value={PRICE_FLOAT_SCENARIOS.FLOAT_30}>30%浮动</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                
-                <Col span={6}>
-                  <Form.Item label="自动识别">
-                    <div style={{ padding: '8px 12px', background: '#f0f9ff', borderRadius: '6px', color: '#1890ff' }}>
-                      <div>📅 日期类型：自动判断</div>
-                      <div>⏰ 发车时段：从票价数据提取</div>
-                    </div>
-                  </Form.Item>
-                </Col>
-              </>
+              <Col span={12}>
+                <Form.Item label="自动识别">
+                  <div style={{ padding: '8px 12px', background: '#f0f9ff', borderRadius: '6px', color: '#1890ff' }}>
+                    <div>📅 日期类型：自动判断</div>
+                    <div>⏰ 发车时段：从票价数据提取</div>
+                    <div>🚄 K值：根据车次号自动匹配（K1/K2/K3）</div>
+                  </div>
+                </Form.Item>
+              </Col>
             )}
           </Row>
         </Form>
@@ -497,7 +478,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 value={`${advanceDays} 天`}
                 prefix={<CalendarOutlined />}
                 suffix={useComplexDiscount ? 
-                  getComplexDiscountInfo({ priceFloatScenario }) : 
+                  '复杂折扣（基于K值）' : 
                   getDiscountInfo(advanceDays)
                 }
               />

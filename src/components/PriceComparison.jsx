@@ -9,7 +9,6 @@ import {
 } from '@ant-design/icons'
 import dbManager from '../utils/indexedDB'
 import { applyComplexDiscountToTickets } from '../utils/complexDiscountRule'
-import { PRICE_FLOAT_SCENARIOS } from '../utils/complexDiscountRule'
 import { ensureKMap } from '../utils/trainKMap'
 import dayjs from 'dayjs'
 
@@ -63,7 +62,6 @@ function PriceComparison({ dbReady }) {
 
       // 应用复杂折扣
       const discountedTickets = applyComplexDiscountToTickets(highSpeedTickets, {
-        priceFloatScenario: PRICE_FLOAT_SCENARIOS.FLOAT_10,
         departureDate: travelDate.format('YYYY-MM-DD'),
         advanceDays: daysDiff
       })

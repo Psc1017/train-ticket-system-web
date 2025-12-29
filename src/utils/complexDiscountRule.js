@@ -3,13 +3,6 @@
  * 支持：出发日期、发车时段、提前购票、旅行时间、票价浮动情景
  */
 
-// 票价浮动情景
-export const PRICE_FLOAT_SCENARIOS = {
-  FLOAT_10: '10%浮动',
-  FLOAT_20: '20%浮动', 
-  FLOAT_30: '30%浮动'
-}
-
 // 出发日期类型
 export const DATE_TYPES = {
   WORKDAY: '工作日',
@@ -24,143 +17,120 @@ export const TIME_PERIODS = {
   LOW: '低谷时段'
 }
 
-// 旅行时间类型
+// 旅行时间类型（K值）
 export const TRAVEL_TIME_TYPES = {
-  K0: 'K=0',
-  K1: 'K=1'
+  K1: 'K=1',  // 上浮55%
+  K2: 'K=2',  // 上浮25%
+  K3: 'K=3'   // 原价
 }
 
-// 10%浮动折扣表
-const DISCOUNT_TABLE_10 = {
+// K=1时列车票价折扣表（上浮55%）
+const DISCOUNT_TABLE_K1 = {
   [DATE_TYPES.WORKDAY]: {
     [TIME_PERIODS.NORMAL]: { // 平峰时段 (6:00-6:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.80, 4: 0.76, 10: 0.72 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.72, 4: 0.68, 10: 0.64 }
+      3: 1.13, 9: 1.07, 10: 1.01
     },
     [TIME_PERIODS.LOW]: { // 低谷时段 (7:00-20:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.76, 4: 0.72, 10: 0.68 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.68, 4: 0.64, 10: 0.61 }
+      3: 1.06, 9: 1.01, 10: 0.95
     }
   },
   [DATE_TYPES.WEEKEND]: {
     [TIME_PERIODS.PEAK]: { // 高峰时段 (6:00-6:59、14:00-14:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.89, 4: 0.85, 10: 0.80 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.80, 4: 0.76, 10: 0.72 }
+      3: 1.26, 9: 1.19, 10: 1.13
     },
     [TIME_PERIODS.NORMAL]: { // 平峰时段 (7:00-7:59、9:00-11:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.85, 4: 0.80, 10: 0.76 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.76, 4: 0.72, 10: 0.68 }
+      3: 1.19, 9: 1.13, 10: 1.07
     },
     [TIME_PERIODS.LOW]: { // 低谷时段 (8:00-8:59、12:00-13:59、15:00-20:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.80, 4: 0.76, 10: 0.72 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.72, 4: 0.68, 10: 0.64 }
+      3: 1.13, 9: 1.07, 10: 1.01
     }
   },
   [DATE_TYPES.HOLIDAY]: {
     [TIME_PERIODS.PEAK]: { // 高峰时段 (6:00-6:59、14:00-14:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.94, 4: 0.89, 10: 0.84 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.85, 4: 0.80, 10: 0.76 }
+      3: 1.33, 9: 1.26, 10: 1.19
     },
     [TIME_PERIODS.NORMAL]: { // 平峰时段 (7:00-13:59、15:00-19:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.89, 4: 0.85, 10: 0.80 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.80, 4: 0.76, 10: 0.72 }
+      3: 1.26, 9: 1.19, 10: 1.13
     },
     [TIME_PERIODS.LOW]: { // 低谷时段 (20:00-20:59)
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.84, 4: 0.80, 10: 0.76 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.76, 4: 0.72, 10: 0.68 }
+      3: 1.19, 9: 1.13, 10: 1.06
     }
   }
 }
 
-// 20%浮动折扣表
-const DISCOUNT_TABLE_20 = {
+// K=2时列车票价折扣表（上浮25%）
+const DISCOUNT_TABLE_K2 = {
   [DATE_TYPES.WORKDAY]: {
-    [TIME_PERIODS.NORMAL]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.87, 4: 0.83, 10: 0.78 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.78, 4: 0.74, 10: 0.70 }
+    [TIME_PERIODS.NORMAL]: { // 平峰时段 (6:00-6:59)
+      3: 0.91, 9: 0.86, 10: 0.81
     },
-    [TIME_PERIODS.LOW]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.82, 4: 0.78, 10: 0.74 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.74, 4: 0.70, 10: 0.66 }
+    [TIME_PERIODS.LOW]: { // 低谷时段 (7:00-20:59)
+      3: 0.86, 9: 0.81, 10: 0.77
     }
   },
   [DATE_TYPES.WEEKEND]: {
-    [TIME_PERIODS.PEAK]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.97, 4: 0.92, 10: 0.87 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.88, 4: 0.83, 10: 0.78 }
+    [TIME_PERIODS.PEAK]: { // 高峰时段 (6:00-6:59、14:00-14:59)
+      3: 1.02, 9: 0.96, 10: 0.91
     },
-    [TIME_PERIODS.NORMAL]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.92, 4: 0.87, 10: 0.83 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.83, 4: 0.79, 10: 0.74 }
+    [TIME_PERIODS.NORMAL]: { // 平峰时段 (7:00-7:59、9:00-11:59)
+      3: 0.96, 9: 0.91, 10: 0.86
     },
-    [TIME_PERIODS.LOW]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.87, 4: 0.83, 10: 0.78 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.78, 4: 0.74, 10: 0.70 }
+    [TIME_PERIODS.LOW]: { // 低谷时段 (8:00-8:59、12:00-13:59、15:00-20:59)
+      3: 0.91, 9: 0.86, 10: 0.81
     }
   },
   [DATE_TYPES.HOLIDAY]: {
-    [TIME_PERIODS.PEAK]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 1.03, 4: 0.97, 10: 0.92 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.93, 4: 0.88, 10: 0.83 }
+    [TIME_PERIODS.PEAK]: { // 高峰时段 (6:00-6:59、14:00-14:59)
+      3: 1.07, 9: 1.02, 10: 0.96
     },
-    [TIME_PERIODS.NORMAL]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.97, 4: 0.92, 10: 0.87 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.88, 4: 0.83, 10: 0.78 }
+    [TIME_PERIODS.NORMAL]: { // 平峰时段 (7:00-13:59、15:00-19:59)
+      3: 1.02, 9: 0.96, 10: 0.91
     },
-    [TIME_PERIODS.LOW]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.92, 4: 0.87, 10: 0.82 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.83, 4: 0.78, 10: 0.74 }
+    [TIME_PERIODS.LOW]: { // 低谷时段 (20:00-20:59)
+      3: 0.96, 9: 0.91, 10: 0.86
     }
   }
 }
 
-// 30%浮动折扣表
-const DISCOUNT_TABLE_30 = {
+// K=3时列车票价折扣表（原价）
+const DISCOUNT_TABLE_K3 = {
   [DATE_TYPES.WORKDAY]: {
-    [TIME_PERIODS.NORMAL]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.94, 4: 0.90, 10: 0.85 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.85, 4: 0.81, 10: 0.76 }
+    [TIME_PERIODS.NORMAL]: { // 平峰时段 (6:00-6:59)
+      3: 0.73, 9: 0.69, 10: 0.65
     },
-    [TIME_PERIODS.LOW]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.89, 4: 0.85, 10: 0.80 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.80, 4: 0.76, 10: 0.72 }
+    [TIME_PERIODS.LOW]: { // 低谷时段 (7:00-20:59)
+      3: 0.69, 9: 0.65, 10: 0.61
     }
   },
   [DATE_TYPES.WEEKEND]: {
-    [TIME_PERIODS.PEAK]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 1.06, 4: 1.00, 10: 0.94 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.95, 4: 0.90, 10: 0.85 }
+    [TIME_PERIODS.PEAK]: { // 高峰时段 (6:00-6:59、14:00-14:59)
+      3: 0.81, 9: 0.77, 10: 0.73
     },
-    [TIME_PERIODS.NORMAL]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 1.00, 4: 0.95, 10: 0.90 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.90, 4: 0.85, 10: 0.81 }
+    [TIME_PERIODS.NORMAL]: { // 平峰时段 (7:00-7:59、9:00-11:59)
+      3: 0.77, 9: 0.73, 10: 0.69
     },
-    [TIME_PERIODS.LOW]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 0.94, 4: 0.90, 10: 0.85 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.85, 4: 0.81, 10: 0.76 }
+    [TIME_PERIODS.LOW]: { // 低谷时段 (8:00-8:59、12:00-13:59、15:00-20:59)
+      3: 0.73, 9: 0.69, 10: 0.65
     }
   },
   [DATE_TYPES.HOLIDAY]: {
-    [TIME_PERIODS.PEAK]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 1.11, 4: 1.06, 10: 1.00 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 1.00, 4: 0.95, 10: 0.90 }
+    [TIME_PERIODS.PEAK]: { // 高峰时段 (6:00-6:59、14:00-14:59)
+      3: 0.86, 9: 0.81, 10: 0.77
     },
-    [TIME_PERIODS.NORMAL]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 1.06, 4: 1.00, 10: 0.95 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.95, 4: 0.90, 10: 0.85 }
+    [TIME_PERIODS.NORMAL]: { // 平峰时段 (7:00-13:59、15:00-19:59)
+      3: 0.81, 9: 0.77, 10: 0.73
     },
-    [TIME_PERIODS.LOW]: {
-      [TRAVEL_TIME_TYPES.K0]: { 1: 1.00, 4: 0.94, 10: 0.89 },
-      [TRAVEL_TIME_TYPES.K1]: { 1: 0.90, 4: 0.85, 10: 0.80 }
+    [TIME_PERIODS.LOW]: { // 低谷时段 (20:00-20:59)
+      3: 0.70, 9: 0.73, 10: 0.69
     }
   }
 }
 
 // 折扣表映射
 const DISCOUNT_TABLES = {
-  [PRICE_FLOAT_SCENARIOS.FLOAT_10]: DISCOUNT_TABLE_10,
-  [PRICE_FLOAT_SCENARIOS.FLOAT_20]: DISCOUNT_TABLE_20,
-  [PRICE_FLOAT_SCENARIOS.FLOAT_30]: DISCOUNT_TABLE_30
+  [TRAVEL_TIME_TYPES.K1]: DISCOUNT_TABLE_K1,
+  [TRAVEL_TIME_TYPES.K2]: DISCOUNT_TABLE_K2,
+  [TRAVEL_TIME_TYPES.K3]: DISCOUNT_TABLE_K3
 }
 
 /**
@@ -244,36 +214,34 @@ export function getTimePeriod(departureTime, dateType) {
 /**
  * 获取提前购票天数对应的折扣键
  * @param {number} advanceDays 提前天数
- * @returns {number} 折扣键
+ * @returns {number} 折扣键 (3: 1-3天, 9: 4-9天, 10: 10天及以上)
  */
 export function getAdvanceDaysKey(advanceDays) {
   if (advanceDays >= 10) return 10
-  if (advanceDays >= 4) return 4
-  return 1
+  if (advanceDays >= 4) return 9
+  return 3
 }
 
 /**
  * 计算复杂折扣
  * @param {number} originalPrice 原始价格
  * @param {Object} params 折扣参数
- * @param {string} params.priceFloatScenario 票价浮动情景
  * @param {string} params.departureDate 出发日期
  * @param {string} params.departureTime 发车时间
  * @param {number} params.advanceDays 提前购票天数
- * @param {string} params.travelTimeType 旅行时间类型
+ * @param {string} params.travelTimeType 旅行时间类型 (K1, K2, K3)
  * @returns {Object} 折扣结果
  */
 export function calculateComplexDiscount(originalPrice, params) {
   const {
-    priceFloatScenario = PRICE_FLOAT_SCENARIOS.FLOAT_10,
     departureDate,
     departureTime,
     advanceDays = 0,
-    travelTimeType = TRAVEL_TIME_TYPES.K0
+    travelTimeType = TRAVEL_TIME_TYPES.K3  // 默认K3（原价）
   } = params
   
   // 获取折扣表
-  const discountTable = DISCOUNT_TABLES[priceFloatScenario]
+  const discountTable = DISCOUNT_TABLES[travelTimeType]
   if (!discountTable) {
     return {
       originalPrice,
@@ -293,7 +261,7 @@ export function calculateComplexDiscount(originalPrice, params) {
   const advanceDaysKey = getAdvanceDaysKey(advanceDays)
   
   // 获取折扣率
-  const discountRate = discountTable[dateType]?.[timePeriod]?.[travelTimeType]?.[advanceDaysKey]
+  const discountRate = discountTable[dateType]?.[timePeriod]?.[advanceDaysKey]
   
   if (discountRate === undefined) {
     return {
@@ -309,7 +277,9 @@ export function calculateComplexDiscount(originalPrice, params) {
   
   // 生成折扣信息
   const discountPercent = Math.round((1 - discountRate) * 100)
-  const discountInfo = discountRate < 1 ? `${discountPercent}%折扣` : `${Math.round((discountRate - 1) * 100)}%上浮`
+  const discountInfo = discountRate < 1 
+    ? `${Math.abs(discountPercent)}%折扣` 
+    : `${Math.round((discountRate - 1) * 100)}%上浮`
   
   return {
     originalPrice,
@@ -317,11 +287,11 @@ export function calculateComplexDiscount(originalPrice, params) {
     discountRate,
     discountInfo,
     details: {
-      priceFloatScenario,
       dateType,
       timePeriod,
       advanceDays,
       travelTimeType,
+      advanceDaysKey,
       autoDetected: {
         dateType: `${dateType} (自动判断)`,
         timePeriod: `${timePeriod} (自动判断)`
@@ -340,7 +310,7 @@ export function applyComplexDiscountToTickets(tickets, discountParams) {
   return tickets.map(ticket => {
     // 自动从票价数据中提取发车时间
     const departureTime = ticket.departureTime || '08:00'
-    // 自动按车次匹配 K 值（如未加载映射或未匹配到则回退为 K0）
+    // 自动按车次匹配 K 值（如未加载映射或未匹配到则回退为 K3）
     let resolvedK = undefined
     try {
       // 动态导入，防止循环依赖
@@ -348,10 +318,10 @@ export function applyComplexDiscountToTickets(tickets, discountParams) {
       const { getKForTrain, TRAVEL_TIME_TYPES: _T } = require('./trainKMap')
       resolvedK = getKForTrain?.(ticket.trainNumber)
       if (!resolvedK) {
-        resolvedK = _T?.K0 || TRAVEL_TIME_TYPES.K0
+        resolvedK = _T?.K3 || TRAVEL_TIME_TYPES.K3
       }
     } catch (e) {
-      resolvedK = TRAVEL_TIME_TYPES.K0
+      resolvedK = TRAVEL_TIME_TYPES.K3
     }
 
     const discountResult = calculateComplexDiscount(ticket.price, {
@@ -382,9 +352,8 @@ export function applyComplexDiscountToTickets(tickets, discountParams) {
  */
 export function getComplexDiscountInfo(discountParams) {
   const {
-    priceFloatScenario = PRICE_FLOAT_SCENARIOS.FLOAT_10,
-    travelTimeType = TRAVEL_TIME_TYPES.K0
+    travelTimeType = TRAVEL_TIME_TYPES.K3
   } = discountParams
   
-  return `${priceFloatScenario} | ${travelTimeType}`
+  return travelTimeType
 }
