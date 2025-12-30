@@ -246,27 +246,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       render: (text) => <Tag>{text}</Tag>
     },
     {
-      title: '折扣详情',
-      key: 'discountDetails',
-      render: (_, record) => {
-        const isDiscount = record.discountRate < 1
-        const percentage = isDiscount 
-          ? `${Math.round((1 - record.discountRate) * 100)}%折扣`
-          : `${Math.round((record.discountRate - 1) * 100)}%上浮`
-        
-        const timePeriodLabels = { high: '高峰', peak: '平峰', valley: '低谷' }
-        
-        return (
-          <Space direction="vertical" size={0}>
-            <Tag color={isDiscount ? 'green' : 'red'}>{percentage}</Tag>
-            <span style={{ fontSize: '11px', color: '#666' }}>
-              {timePeriodLabels[record.timePeriod] || record.timePeriod}时段
-            </span>
-          </Space>
-        )
-      }
-    },
-    {
       title: '操作',
       key: 'action',
       render: (_, record) => (
