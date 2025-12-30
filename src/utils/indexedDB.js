@@ -119,9 +119,25 @@ class DBManager {
     })
   }
 
+  // 标准化票价数据字段名（支持中文和英文字段）
+  normalizeTicket(ticket) {
+    return {
+      trainNumber: ticket.trainNumber || ticket['车次号'] || ticket['车次'],
+      fromStation: ticket.fromStation || ticket['出发站'],
+      toStation: ticket.toStation || ticket['到达站'],
+      departureTime: ticket.departureTime || ticket['出发时间'],
+      arrivalTime: ticket.arrivalTime || ticket['到达时间'],
+      price: ticket.price || ticket['票价'],
+      seatType: ticket.seatType || ticket['席别'] || ticket['座位类型']
+    }
+  }
+
   // 批量导入票价数据
   async importTickets(tickets) {
     if (!this.db) await this.init()
+
+    // 标准化所有票价数据
+    const normalizedTickets = tickets.map(t => this.normalizeTicket(t))
 
     return new Promise(async (resolve, reject) => {
       const transaction = this.db.transaction([STORE_TICKETS], 'readwrite')
@@ -130,10 +146,12 @@ class DBManager {
 
       // 提取所有唯一的站点
       const uniqueStations = new Set()
-      tickets.forEach(ticket => {
+      normalizedTickets.forEach(ticket => {
         if (ticket.fromStation) uniqueStations.add(ticket.fromStation)
         if (ticket.toStation) uniqueStations.add(ticket.toStation)
       })
+
+      console.log(`从票价数据中提取了 ${uniqueStations.size} 个唯一站点`)
 
       // 批量导入站点数据（更快的方式）
       try {
@@ -163,13 +181,13 @@ class DBManager {
           stationTransaction.onerror = () => resolve()
         })
         
-        console.log(`已导入/更新站点数据`)
+        console.log(`已导入/更新 ${stationsToAdd.length} 个站点数据`)
       } catch (error) {
         console.error('导入站点失败（可忽略）:', error)
       }
 
       let count = 0
-      const totalBatches = Math.ceil(tickets.length / batchSize)
+      const totalBatches = Math.ceil(normalizedTickets.length / batchSize)
 
       const importBatch = async (batchIndex) => {
         // 为每个批次创建新的事务
@@ -177,8 +195,8 @@ class DBManager {
         const batchStore = batchTransaction.objectStore(STORE_TICKETS)
         
         const start = batchIndex * batchSize
-        const end = Math.min(start + batchSize, tickets.length)
-        const batch = tickets.slice(start, end)
+        const end = Math.min(start + batchSize, normalizedTickets.length)
+        const batch = normalizedTickets.slice(start, end)
 
         return new Promise((res, rej) => {
           let completedInBatch = 0
@@ -197,7 +215,7 @@ class DBManager {
               completedInBatch++
               if (completedInBatch === batch.length) {
                 count += batch.length
-                console.log(`已导入 ${count} / ${tickets.length} 条数据`)
+                console.log(`已导入 ${count} / ${normalizedTickets.length} 条数据`)
                 
                 if (batchIndex === totalBatches - 1) {
                   resolve(count)
