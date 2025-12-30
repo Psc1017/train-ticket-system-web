@@ -12,7 +12,6 @@ import {
   Statistic,
   Row,
   Col,
-  Switch,
   Divider
 } from 'antd'
 import { 
@@ -23,15 +22,11 @@ import {
   ShoppingCartOutlined
 } from '@ant-design/icons'
 import dbManager from '../utils/indexedDB'
-import { applyDiscountToTickets, getDiscountInfo } from '../utils/discountRule'
 import { 
-  applyComplexDiscountToTickets, 
-  getComplexDiscountInfo,
-  DATE_TYPES,
-  TIME_PERIODS
-} from '../utils/complexDiscountRule'
-import { ensureKMap } from '../utils/trainKMap'
-import dayjs from 'dayjs'
+  loadTrainKValueMap, 
+  applyNewDiscountToTickets,
+  getDiscountDescription
+} from '../utils/newDiscountRule'
 
 const { Option } = Select
 
@@ -41,16 +36,18 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
   const [loading, setLoading] = useState(false)
   const [tickets, setTickets] = useState([])
   const [statistics, setStatistics] = useState(null)
-  const [advanceDays, setAdvanceDays] = useState(0)
   const [participantId, setParticipantId] = useState('')
   const [purchasing, setPurchasing] = useState(false)
-
   const [idInputValue, setIdInputValue] = useState('')
   
-  // 复杂折扣参数
-  const [useComplexDiscount, setUseComplexDiscount] = useState(false)
-  // 预加载车次-K映射
-  useEffect(() => { ensureKMap() }, [])
+  // 当前选择的参数
+  const [currentDateType, setCurrentDateType] = useState('workday')
+  const [currentAdvanceDays, setCurrentAdvanceDays] = useState('1-3')
+
+  // 预加载车次K值映射
+  useEffect(() => { 
+    loadTrainKValueMap()
+  }, [])
 
   // 初始化参与者ID
   useEffect(() => {
@@ -95,26 +92,19 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     }
   }
 
+  // 原始查询结果（未应用折扣）
+  const [rawTickets, setRawTickets] = useState([])
+
   const handleSearch = async (values) => {
     setLoading(true)
     try {
       const fromStation = values.fromStation
       const toStation = values.toStation
+      const dateType = values.dateType || 'workday'
+      const advanceDaysRange = values.advanceDaysSelect || '1-3'
       
-      // 从提前购票天数选择中计算
-      const advanceDaysSelect = values.advanceDaysSelect || '1-3'
-      let daysDiff = 0
-      if (advanceDaysSelect === '1-3') {
-        daysDiff = 2 // 取中间值，或可以根据需要调整
-      } else if (advanceDaysSelect === '4-9') {
-        daysDiff = 6 // 取中间值
-      } else if (advanceDaysSelect === '10+') {
-        daysDiff = 15 // 默认值
-      }
-      setAdvanceDays(daysDiff)
-      
-      // 使用当前日期作为出行日期（用于折扣计算）
-      const travelDate = dayjs()
+      setCurrentDateType(dateType)
+      setCurrentAdvanceDays(advanceDaysRange)
 
       const results = await dbManager.searchTickets(
         fromStation, 
@@ -122,20 +112,15 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         { limit: 5000 }
       )
 
-      // 应用折扣
-      let discountedTickets
-      if (useComplexDiscount) {
-        discountedTickets = applyComplexDiscountToTickets(results, {
-          departureDate: travelDate.format('YYYY-MM-DD'),
-          advanceDays: daysDiff
-        })
-      } else {
-        discountedTickets = applyDiscountToTickets(results, daysDiff)
-      }
+      // 保存原始结果
+      setRawTickets(results)
+
+      // 应用新的折扣逻辑
+      const discountedTickets = applyNewDiscountToTickets(results, dateType, advanceDaysRange)
       
       setTickets(discountedTickets)
 
-      message.success(`找到 ${discountedTickets.length} 条结果（共查询 ${results.length} 条数据）`)
+      message.success(`找到 ${discountedTickets.length} 条结果`)
     } catch (error) {
       message.error('查询失败: ' + error.message)
     } finally {
@@ -143,37 +128,30 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     }
   }
 
-  // 处理提前购票天数选择变化
-  const handleAdvanceDaysSelectChange = (value) => {
-    let calcDays = 0
-    if (value === '1-3') {
-      calcDays = 2
-    } else if (value === '4-9') {
-      calcDays = 6
-    } else if (value === '10+') {
-      calcDays = 15
+  // 当日期类型或提前天数改变时，重新计算折扣
+  const handleDateTypeChange = (value) => {
+    setCurrentDateType(value)
+    form.setFieldValue('dateType', value)
+    
+    if (rawTickets.length > 0) {
+      const discountedTickets = applyNewDiscountToTickets(rawTickets, value, currentAdvanceDays)
+      setTickets(discountedTickets)
     }
-    setAdvanceDays(calcDays)
+  }
+
+  const handleAdvanceDaysSelectChange = (value) => {
+    setCurrentAdvanceDays(value)
     form.setFieldValue('advanceDaysSelect', value)
     
-    // 如果已有查询结果，立即更新折扣
-    if (tickets.length > 0) {
-      if (useComplexDiscount) {
-        const discountedTickets = applyComplexDiscountToTickets(tickets, {
-          departureDate: dayjs().format('YYYY-MM-DD'),
-          advanceDays: calcDays
-        })
-        setTickets(discountedTickets)
-      } else {
-        const discountedTickets = applyDiscountToTickets(tickets, calcDays)
-        setTickets(discountedTickets)
-      }
+    if (rawTickets.length > 0) {
+      const discountedTickets = applyNewDiscountToTickets(rawTickets, currentDateType, value)
+      setTickets(discountedTickets)
     }
   }
 
   const handlePurchase = async (ticket) => {
     if (!participantId) {
-      message.error('参与者信息未初始化')
+      message.error('请先设置参与者编号')
       return
     }
 
@@ -191,7 +169,10 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         finalPrice: ticket.price,
         discountRate: ticket.discountRate || 1,
         discountInfo: ticket.discountInfo || '无折扣',
-        advanceDays: advanceDays,
+        kValue: ticket.kValue,
+        dateType: ticket.dateType,
+        timePeriod: ticket.timePeriod,
+        advanceDays: currentAdvanceDays,
         seatType: ticket.seatType
       }
 
@@ -209,7 +190,14 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       title: '车次',
       dataIndex: 'trainNumber',
       key: 'trainNumber',
-      render: (text) => <Tag color="blue"><RocketOutlined /> {text}</Tag>
+      render: (text, record) => (
+        <Space direction="vertical" size={0}>
+          <Tag color="blue"><RocketOutlined /> {text}</Tag>
+          <Tag color={record.kValue === 1 ? 'red' : record.kValue === 2 ? 'orange' : 'green'} style={{ fontSize: '10px' }}>
+            K={record.kValue}
+          </Tag>
+        </Space>
+      )
     },
     {
       title: '出发站',
@@ -241,16 +229,15 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       title: '折后票价',
       dataIndex: 'price',
       key: 'price',
-      render: (price, record) => (
-        <Space>
-          <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#f5222d' }}>
+      render: (price, record) => {
+        const isDiscount = record.discountRate < 1
+        const color = isDiscount ? '#52c41a' : '#f5222d'
+        return (
+          <span style={{ fontSize: '16px', fontWeight: 'bold', color }}>
             <DollarOutlined /> ¥{price.toFixed(2)}
           </span>
-          {record.discountInfo && (
-            <Tag color="green">{record.discountInfo}</Tag>
-          )}
-        </Space>
-      )
+        )
+      }
     },
     {
       title: '席别',
@@ -262,20 +249,21 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       title: '折扣详情',
       key: 'discountDetails',
       render: (_, record) => {
-        if (record.discountDetails?.autoDetected) {
-          return (
-            <div>
-              <div>{record.discountInfo}</div>
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                {record.discountDetails.autoDetected.dateType}
-              </div>
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                {record.discountDetails.autoDetected.timePeriod}
-              </div>
-            </div>
-          )
-        }
-        return record.discountInfo || '无折扣'
+        const isDiscount = record.discountRate < 1
+        const percentage = isDiscount 
+          ? `${Math.round((1 - record.discountRate) * 100)}%折扣`
+          : `${Math.round((record.discountRate - 1) * 100)}%上浮`
+        
+        const timePeriodLabels = { high: '高峰', peak: '平峰', valley: '低谷' }
+        
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={isDiscount ? 'green' : 'red'}>{percentage}</Tag>
+            <span style={{ fontSize: '11px', color: '#666' }}>
+              {timePeriodLabels[record.timePeriod] || record.timePeriod}时段
+            </span>
+          </Space>
+        )
       }
     },
     {
@@ -293,6 +281,12 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       )
     }
   ]
+
+  // 获取日期类型标签
+  const getDateTypeLabel = (type) => {
+    const labels = { workday: '工作日', weekend: '休息日', holiday: '节假日' }
+    return labels[type] || type
+  }
 
   return (
     <div>
@@ -333,9 +327,13 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
           form={form}
           layout="vertical"
           onFinish={handleSearch}
+          initialValues={{
+            dateType: 'workday',
+            advanceDaysSelect: '1-3'
+          }}
         >
           <Row gutter={16}>
-            <Col xs={24} sm={12} md={8} lg={6}>
+            <Col xs={24} sm={12} md={6}>
               <Form.Item
                 label="出发站"
                 name="fromStation"
@@ -356,7 +354,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={8} lg={6}>
+            <Col xs={24} sm={12} md={6}>
               <Form.Item
                 label="到达站"
                 name="toStation"
@@ -377,15 +375,28 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={8} lg={6}>
+            <Col xs={24} sm={12} md={4}>
               <Form.Item
-                label="提前购票天数"
-                name="advanceDaysSelect"
-                initialValue="1-3"
+                label="日期类型"
+                name="dateType"
               >
                 <Select 
                   style={{ width: '100%' }}
-                  placeholder="选择提前购票天数"
+                  onChange={handleDateTypeChange}
+                >
+                  <Option value="workday">工作日</Option>
+                  <Option value="weekend">休息日</Option>
+                  <Option value="holiday">节假日</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} md={4}>
+              <Form.Item
+                label="提前购票天数"
+                name="advanceDaysSelect"
+              >
+                <Select 
+                  style={{ width: '100%' }}
                   onChange={handleAdvanceDaysSelectChange}
                 >
                   <Option value="1-3">提前1-3天</Option>
@@ -394,7 +405,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={8} lg={6}>
+            <Col xs={24} sm={12} md={4}>
               <Form.Item label=" ">
                 <Button 
                   type="primary" 
@@ -410,50 +421,56 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
             </Col>
           </Row>
           
-          <Divider />
+          <Divider style={{ margin: '12px 0' }} />
           
-          <Row gutter={16}>
-            <Col xs={24} sm={12} md={8} lg={6}>
-              <Form.Item label="折扣模式">
-                <Switch
-                  checked={useComplexDiscount}
-                  onChange={setUseComplexDiscount}
-                  checkedChildren="复杂折扣"
-                  unCheckedChildren="简单折扣"
-                />
-              </Form.Item>
-            </Col>
-            
-            {useComplexDiscount && (
-              <Col span={12}>
-                  <Form.Item label="自动识别">
-                    <div style={{ padding: '8px 12px', background: '#f0f9ff', borderRadius: '6px', color: '#1890ff' }}>
-                      <div>📅 日期类型：自动判断</div>
-                      <div>⏰ 发车时段：从票价数据提取</div>
-                    <div>🚄 K值：根据车次号自动匹配（K1/K2/K3）</div>
-                    </div>
-                  </Form.Item>
-                </Col>
-            )}
-          </Row>
+          <div style={{ padding: '8px 12px', background: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
+            <Row gutter={16}>
+              <Col span={24}>
+                <span style={{ color: '#52c41a', fontWeight: 'bold' }}>📋 折扣规则说明：</span>
+                <span style={{ marginLeft: 8, color: '#666' }}>
+                  折扣率 = f(车次K值, 日期类型, 发车时段, 提前天数)
+                </span>
+              </Col>
+            </Row>
+            <Row gutter={16} style={{ marginTop: 8 }}>
+              <Col span={8}>
+                <span style={{ color: '#666' }}>🚄 K值：</span>
+                <Tag color="red">K1 上浮55%</Tag>
+                <Tag color="orange">K2 上浮25%</Tag>
+                <Tag color="green">K3 原价</Tag>
+              </Col>
+              <Col span={8}>
+                <span style={{ color: '#666' }}>📅 日期：</span>
+                <span>工作日 / 休息日 / 节假日</span>
+              </Col>
+              <Col span={8}>
+                <span style={{ color: '#666' }}>⏰ 时段：</span>
+                <span>高峰 / 平峰 / 低谷（根据发车时间自动判断）</span>
+              </Col>
+            </Row>
+          </div>
         </Form>
       </Card>
 
       {tickets.length > 0 && (
         <Card style={{ marginBottom: 24 }}>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col span={6}>
               <Statistic 
-                title="提前购票" 
-                value={`${advanceDays} 天`}
+                title="当前设置" 
+                value={getDateTypeLabel(currentDateType)}
                 prefix={<CalendarOutlined />}
-                suffix={useComplexDiscount ? 
-                  '复杂折扣（基于K值）' : 
-                  getDiscountInfo(advanceDays)
-                }
+                suffix={getDiscountDescription(currentAdvanceDays)}
               />
             </Col>
-            <Col span={8}>
+            <Col span={6}>
+              <Statistic 
+                title="查询结果" 
+                value={tickets.length}
+                suffix="条"
+              />
+            </Col>
+            <Col span={6}>
               <Statistic 
                 title="最低票价" 
                 value={Math.min(...tickets.map(t => t.price))}
@@ -461,7 +478,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 precision={2}
               />
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Statistic 
                 title="平均票价" 
                 value={tickets.reduce((sum, t) => sum + t.price, 0) / tickets.length}
@@ -514,4 +531,3 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
 }
 
 export default SearchTicket
-
