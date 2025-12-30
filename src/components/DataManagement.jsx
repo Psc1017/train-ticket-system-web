@@ -228,12 +228,20 @@ function DataManagement({ dbReady }) {
     }
 
     try {
+      message.loading('正在清空数据...', 0)
       await dbManager.clearAll()
-      message.success('数据已清空')
+      message.destroy()
+      message.success('数据已清空，页面将自动刷新')
       // 触发数据清空事件，通知其他组件刷新
       window.dispatchEvent(new Event('dataImported'))
+      // 延迟刷新页面，确保用户看到成功提示
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (error) {
+      message.destroy()
       message.error('清空数据失败: ' + error.message)
+      console.error('清空数据失败:', error)
     }
   }
 
