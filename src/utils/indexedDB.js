@@ -33,16 +33,16 @@ class DBManager {
 
     return new Promise((resolve, reject) => {
       try {
-        const request = indexedDB.open(DB_NAME, DB_VERSION)
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
 
         request.onerror = (event) => {
           console.error('打开数据库失败:', event.target.error)
           reject(event.target.error || new Error('无法打开数据库'))
         }
         
-        request.onsuccess = () => {
+      request.onsuccess = () => {
           try {
-            this.db = request.result
+        this.db = request.result
             
             // 监听数据库关闭事件
             this.db.onclose = () => {
@@ -60,7 +60,7 @@ class DBManager {
             }
             
             console.log('数据库初始化成功')
-            resolve(this.db)
+        resolve(this.db)
           } catch (error) {
             console.error('数据库初始化后处理失败:', error)
             reject(error)
@@ -69,48 +69,48 @@ class DBManager {
         
         request.onblocked = () => {
           console.warn('数据库升级被阻塞，请关闭其他标签页')
+      }
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result
+
+        // 创建票价数据存储
+        if (!db.objectStoreNames.contains(STORE_TICKETS)) {
+          const ticketStore = db.createObjectStore(STORE_TICKETS, { keyPath: 'id', autoIncrement: true })
+          ticketStore.createIndex('fromStation', 'fromStation', { unique: false })
+          ticketStore.createIndex('toStation', 'toStation', { unique: false })
+          ticketStore.createIndex('trainNumber', 'trainNumber', { unique: false })
+          ticketStore.createIndex('departureTime', 'departureTime', { unique: false })
         }
 
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result
+        // 创建站点数据存储
+        if (!db.objectStoreNames.contains(STORE_STATIONS)) {
+          const stationStore = db.createObjectStore(STORE_STATIONS, { keyPath: 'id', autoIncrement: true })
+          stationStore.createIndex('name', 'name', { unique: true })
+          stationStore.createIndex('code', 'code', { unique: true })
+        }
 
-          // 创建票价数据存储
-          if (!db.objectStoreNames.contains(STORE_TICKETS)) {
-            const ticketStore = db.createObjectStore(STORE_TICKETS, { keyPath: 'id', autoIncrement: true })
-            ticketStore.createIndex('fromStation', 'fromStation', { unique: false })
-            ticketStore.createIndex('toStation', 'toStation', { unique: false })
-            ticketStore.createIndex('trainNumber', 'trainNumber', { unique: false })
-            ticketStore.createIndex('departureTime', 'departureTime', { unique: false })
-          }
+        // 创建路线数据存储
+        if (!db.objectStoreNames.contains(STORE_ROUTES)) {
+          const routeStore = db.createObjectStore(STORE_ROUTES, { keyPath: 'id', autoIncrement: true })
+          routeStore.createIndex('fromTo', ['fromStation', 'toStation'], { unique: false })
+        }
 
-          // 创建站点数据存储
-          if (!db.objectStoreNames.contains(STORE_STATIONS)) {
-            const stationStore = db.createObjectStore(STORE_STATIONS, { keyPath: 'id', autoIncrement: true })
-            stationStore.createIndex('name', 'name', { unique: true })
-            stationStore.createIndex('code', 'code', { unique: true })
-          }
+        // 创建购票记录存储
+        if (!db.objectStoreNames.contains(STORE_PURCHASES)) {
+          const purchaseStore = db.createObjectStore(STORE_PURCHASES, { keyPath: 'id', autoIncrement: true })
+          purchaseStore.createIndex('participantId', 'participantId', { unique: false })
+          purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
+          purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
+          purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
+        }
 
-          // 创建路线数据存储
-          if (!db.objectStoreNames.contains(STORE_ROUTES)) {
-            const routeStore = db.createObjectStore(STORE_ROUTES, { keyPath: 'id', autoIncrement: true })
-            routeStore.createIndex('fromTo', ['fromStation', 'toStation'], { unique: false })
-          }
-
-          // 创建购票记录存储
-          if (!db.objectStoreNames.contains(STORE_PURCHASES)) {
-            const purchaseStore = db.createObjectStore(STORE_PURCHASES, { keyPath: 'id', autoIncrement: true })
-            purchaseStore.createIndex('participantId', 'participantId', { unique: false })
-            purchaseStore.createIndex('trainNumber', 'trainNumber', { unique: false })
-            purchaseStore.createIndex('purchaseTime', 'purchaseTime', { unique: false })
-            purchaseStore.createIndex('advanceDays', 'advanceDays', { unique: false })
-          }
-
-          // 创建问卷存储
-          if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
-            const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
-            surveyStore.createIndex('participantId', 'participantId', { unique: false })
-            surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
-          }
+        // 创建问卷存储
+        if (!db.objectStoreNames.contains(STORE_SURVEYS)) {
+          const surveyStore = db.createObjectStore(STORE_SURVEYS, { keyPath: 'id', autoIncrement: true })
+          surveyStore.createIndex('participantId', 'participantId', { unique: false })
+          surveyStore.createIndex('createdAt', 'createdAt', { unique: false })
+        }
         }
       } catch (error) {
         console.error('数据库初始化异常:', error)
@@ -313,23 +313,23 @@ class DBManager {
     // 先尝试从站点表获取
     return new Promise(async (resolve, reject) => {
       try {
-        const transaction = this.db.transaction([STORE_STATIONS], 'readonly')
-        const store = transaction.objectStore(STORE_STATIONS)
-        const request = store.getAll()
+      const transaction = this.db.transaction([STORE_STATIONS], 'readonly')
+      const store = transaction.objectStore(STORE_STATIONS)
+      const request = store.getAll()
 
-        request.onsuccess = async () => {
+      request.onsuccess = async () => {
           try {
             const stations = request.result || []
             console.log(`站点表有 ${stations.length} 个站点`)
             
-            // 如果站点表为空或太少，从票价数据中提取并保存
+        // 如果站点表为空或太少，从票价数据中提取并保存
             if (stations.length < 10) {
               console.log(`站点表站点太少，从票价数据中提取站点...`)
-              const ticketStations = await this.extractStationsFromTickets()
-              console.log(`成功提取并保存 ${ticketStations.length} 个站点`)
-              resolve(ticketStations)
-            } else {
-              console.log(`从数据库读取了 ${stations.length} 个站点`)
+          const ticketStations = await this.extractStationsFromTickets()
+          console.log(`成功提取并保存 ${ticketStations.length} 个站点`)
+          resolve(ticketStations)
+        } else {
+          console.log(`从数据库读取了 ${stations.length} 个站点`)
               // 确保返回的站点有 name 属性
               const validStations = stations.filter(s => s && s.name)
               if (validStations.length > 0) {
@@ -388,9 +388,9 @@ class DBManager {
               return
             }
 
-            const uniqueStations = new Set()
+          const uniqueStations = new Set()
 
-            tickets.forEach(ticket => {
+          tickets.forEach(ticket => {
               // 确保站点名称是字符串且不为空
               if (ticket.fromStation && typeof ticket.fromStation === 'string' && ticket.fromStation.trim()) {
                 uniqueStations.add(ticket.fromStation.trim())
@@ -398,9 +398,9 @@ class DBManager {
               if (ticket.toStation && typeof ticket.toStation === 'string' && ticket.toStation.trim()) {
                 uniqueStations.add(ticket.toStation.trim())
               }
-            })
+          })
 
-            // 转换为站点对象数组
+          // 转换为站点对象数组
             const stations = Array.from(uniqueStations)
               .filter(name => name && name.length > 0) // 过滤空字符串
               .map(name => ({
@@ -416,15 +416,15 @@ class DBManager {
               return
             }
 
-            // 保存到站点表
+          // 保存到站点表
             try {
-              const stationTransaction = this.db.transaction([STORE_STATIONS], 'readwrite')
-              const stationStore = stationTransaction.objectStore(STORE_STATIONS)
+          const stationTransaction = this.db.transaction([STORE_STATIONS], 'readwrite')
+          const stationStore = stationTransaction.objectStore(STORE_STATIONS)
 
               let savedCount = 0
               let errorCount = 0
 
-              stations.forEach(station => {
+          stations.forEach(station => {
                 const addRequest = stationStore.add(station)
                 addRequest.onsuccess = () => {
                   savedCount++
@@ -437,9 +437,9 @@ class DBManager {
                     console.warn('保存站点失败:', station.name, error)
                   }
                 }
-              })
+          })
 
-              await new Promise((res) => {
+          await new Promise((res) => {
                 stationTransaction.oncomplete = () => {
                   console.log(`已保存 ${savedCount} 个新站点到数据库（${errorCount} 个重复）`)
                   res()
@@ -454,7 +454,7 @@ class DBManager {
             }
 
             console.log(`成功提取并返回 ${stations.length} 个站点`)
-            resolve(stations)
+          resolve(stations)
           } catch (error) {
             console.error('提取站点数据失败:', error)
             reject(error)

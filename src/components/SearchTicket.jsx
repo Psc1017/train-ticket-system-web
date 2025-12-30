@@ -456,14 +456,14 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
             
             {useComplexDiscount && (
               <Col span={12}>
-                <Form.Item label="自动识别">
-                  <div style={{ padding: '8px 12px', background: '#f0f9ff', borderRadius: '6px', color: '#1890ff' }}>
-                    <div>📅 日期类型：自动判断</div>
-                    <div>⏰ 发车时段：从票价数据提取</div>
+                  <Form.Item label="自动识别">
+                    <div style={{ padding: '8px 12px', background: '#f0f9ff', borderRadius: '6px', color: '#1890ff' }}>
+                      <div>📅 日期类型：自动判断</div>
+                      <div>⏰ 发车时段：从票价数据提取</div>
                     <div>🚄 K值：根据车次号自动匹配（K1/K2/K3）</div>
-                  </div>
-                </Form.Item>
-              </Col>
+                    </div>
+                  </Form.Item>
+                </Col>
             )}
           </Row>
         </Form>
