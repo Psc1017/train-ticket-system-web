@@ -11,8 +11,7 @@ import {
   message,
   Statistic,
   Row,
-  Col,
-  Divider
+  Col
 } from 'antd'
 import { 
   SearchOutlined, 
@@ -399,35 +398,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
               </Form.Item>
             </Col>
           </Row>
-          
-          <Divider style={{ margin: '12px 0' }} />
-          
-          <div style={{ padding: '8px 12px', background: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
-            <Row gutter={16}>
-              <Col span={24}>
-                <span style={{ color: '#52c41a', fontWeight: 'bold' }}>📋 折扣规则说明：</span>
-                <span style={{ marginLeft: 8, color: '#666' }}>
-                  折扣率 = f(车次K值, 日期类型, 发车时段, 提前天数)
-                </span>
-              </Col>
-            </Row>
-            <Row gutter={16} style={{ marginTop: 8 }}>
-              <Col span={8}>
-                <span style={{ color: '#666' }}>🚄 K值：</span>
-                <Tag color="red">K1 上浮55%</Tag>
-                <Tag color="orange">K2 上浮25%</Tag>
-                <Tag color="green">K3 原价</Tag>
-              </Col>
-              <Col span={8}>
-                <span style={{ color: '#666' }}>📅 日期：</span>
-                <span>工作日 / 休息日 / 节假日</span>
-              </Col>
-              <Col span={8}>
-                <span style={{ color: '#666' }}>⏰ 时段：</span>
-                <span>高峰 / 平峰 / 低谷（根据发车时间自动判断）</span>
-              </Col>
-            </Row>
-          </div>
         </Form>
       </Card>
 
