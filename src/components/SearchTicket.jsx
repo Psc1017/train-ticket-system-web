@@ -12,7 +12,6 @@ import {
   Statistic,
   Row,
   Col,
-  Tooltip,
   Switch,
   Divider
 } from 'antd'
@@ -21,8 +20,7 @@ import {
   RocketOutlined, 
   DollarOutlined,
   CalendarOutlined,
-  ShoppingCartOutlined,
-  SettingOutlined
+  ShoppingCartOutlined
 } from '@ant-design/icons'
 import dbManager from '../utils/indexedDB'
 import { applyDiscountToTickets, getDiscountInfo } from '../utils/discountRule'
@@ -142,34 +140,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       message.error('查询失败: ' + error.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleAdvanceDaysChange = (days) => {
-    setAdvanceDays(days)
-    if (tickets.length > 0) {
-      if (useComplexDiscount) {
-        const formValues = form.getFieldsValue()
-        const advanceDaysSelect = formValues.advanceDaysSelect || '1-3'
-        let calcDays = 0
-        if (advanceDaysSelect === '1-3') {
-          calcDays = 2
-        } else if (advanceDaysSelect === '4-9') {
-          calcDays = 6
-        } else if (advanceDaysSelect === '10+') {
-          calcDays = 15
-        }
-        const discountedTickets = applyComplexDiscountToTickets(tickets, {
-          departureDate: dayjs().format('YYYY-MM-DD'),
-          advanceDays: calcDays
-        })
-        setTickets(discountedTickets)
-        message.info(`已更新复杂折扣`)
-      } else {
-        const discountedTickets = applyDiscountToTickets(tickets, days)
-        setTickets(discountedTickets)
-        message.info(`已更新折扣: ${getDiscountInfo(days)}`)
-      }
     }
   }
 
@@ -504,30 +474,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       )}
 
       {tickets.length > 0 && (
-        <Card 
-          title={
-            <Space>
-              <span>查询结果</span>
-              <Tooltip title="调整提前购票天数以查看不同折扣">
-                <Select 
-                  value={advanceDays} 
-                  onChange={handleAdvanceDaysChange}
-                  style={{ width: 200 }}
-                  placeholder="选择提前购票天数"
-                >
-                  <Option value={0}>当日购票</Option>
-                  <Option value={1}>提前1天</Option>
-                  <Option value={2}>提前2天</Option>
-                  <Option value={3}>提前3天</Option>
-                  <Option value={7}>提前7天</Option>
-                  <Option value={14}>提前14天</Option>
-                  <Option value={30}>提前30天</Option>
-                  <Option value={60}>提前60天</Option>
-                </Select>
-              </Tooltip>
-            </Space>
-          }
-        >
+        <Card title="查询结果">
           <Table 
             columns={columns} 
             dataSource={tickets}

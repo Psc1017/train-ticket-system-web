@@ -230,6 +230,8 @@ function DataManagement({ dbReady }) {
     try {
       await dbManager.clearAll()
       message.success('数据已清空')
+      // 触发数据清空事件，通知其他组件刷新
+      window.dispatchEvent(new Event('dataImported'))
     } catch (error) {
       message.error('清空数据失败: ' + error.message)
     }
