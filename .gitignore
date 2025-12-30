@@ -1,27 +1,27 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
 
-# Build outputs
-# dist/  # 注释掉，让 Vercel 可以访问构建文件
-build/
+# Build output (Vercel会自动构建)
+dist/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment
+# Local env files
 .env
 .env.local
+.env.*.local
+
+# Editor directories
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
 npm-debug.log*
 
+# Temp files
+*.zip
+deploy-files.zip
+deploy.zip
