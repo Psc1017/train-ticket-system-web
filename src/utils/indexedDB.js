@@ -300,43 +300,36 @@ class DBManager {
   }
 
   // 根据起终点模糊查询票价（支持站点名称包含匹配）
-  // 优化：先用索引精确匹配出发站，再过滤到达站
+  // 出发站和到达站都支持模糊匹配（包含匹配）
   async searchTicketsFuzzy(fromKeyword, toKeyword, options = {}) {
     if (!this.db) await this.init()
 
     const { limit = 5000 } = options
 
-    // 优化策略：
-    // 1. 如果关键词完全匹配站点名，使用索引精确查询（最快）
-    // 2. 否则使用索引范围查询 + 过滤
+    // 搜索策略：
+    // 出发站和到达站都使用包含匹配（includes）
+    // 例如：搜索"北京"到"南京"，会匹配"北京南"到"南京南"、"北京西"到"南京"等
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_TICKETS], 'readonly')
       const store = transaction.objectStore(STORE_TICKETS)
-      const index = store.index('fromStation')
-      
-      // 使用索引查询出发站
-      const request = index.openCursor(IDBKeyRange.only(fromKeyword))
-      
+      const request = store.openCursor()
+
       const results = []
 
       request.onsuccess = (event) => {
         const cursor = event.target.result
         if (!cursor) {
-          // 如果精确匹配没有结果，尝试模糊匹配（回退方案）
-          if (results.length === 0) {
-            this._searchTicketsFuzzyFallback(fromKeyword, toKeyword, limit)
-              .then(resolve)
-              .catch(reject)
-            return
-          }
           resolve(results)
           return
         }
 
         const ticket = cursor.value
-        // 检查到达站是否匹配
-        if (ticket.toStation && ticket.toStation.includes(toKeyword)) {
+        // 出发站和到达站都使用模糊匹配（包含匹配）
+        const fromMatch = ticket.fromStation && ticket.fromStation.includes(fromKeyword)
+        const toMatch = ticket.toStation && ticket.toStation.includes(toKeyword)
+        
+        if (fromMatch && toMatch) {
           if (results.length < limit) {
             results.push(ticket)
           }
