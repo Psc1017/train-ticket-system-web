@@ -11,7 +11,8 @@ import {
   message,
   Statistic,
   Row,
-  Col
+  Col,
+  Radio
 } from 'antd'
 import { 
   SearchOutlined, 
@@ -24,10 +25,18 @@ import dbManager from '../utils/indexedDB'
 import { 
   loadTrainKValueMap, 
   applyNewDiscountToTickets,
-  getDiscountDescription
+  getDiscountDescription,
+  calculateDiscountedPrice
 } from '../utils/newDiscountRule'
 
 const { Option } = Select
+
+// 席别价格系数（相对于二等座）
+const SEAT_PRICE_RATIO = {
+  '商务座': 3.5,
+  '一等座': 1.8,
+  '二等座': 1.0
+}
 
 function SearchTicket({ dbReady, refreshKey = 0 }) {
   const [form] = Form.useForm()
@@ -42,6 +51,12 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
   // 当前选择的参数
   const [currentDateType, setCurrentDateType] = useState('workday')
   const [currentAdvanceDays, setCurrentAdvanceDays] = useState('1-3')
+  
+  // 搜索模式：fuzzy（模糊搜索）或 exact（精确搜索）
+  const [searchMode, setSearchMode] = useState('fuzzy')
+  
+  // 每行选择的席别（key为车次唯一标识，value为席别）
+  const [selectedSeats, setSelectedSeats] = useState({})
 
   // 预加载车次K值映射
   useEffect(() => { 
@@ -94,6 +109,110 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
   // 原始查询结果（未应用折扣）
   const [rawTickets, setRawTickets] = useState([])
 
+  /**
+   * 合并同一车次的不同席别数据
+   * 将商务座、一等座、二等座合并为一条记录，默认显示二等座价格
+   */
+  const mergeTicketsBySeatType = (ticketList, dateType, advanceDaysRange) => {
+    // 按车次+出发站+到达站+出发时间+到达时间分组
+    const groupedMap = new Map()
+    
+    ticketList.forEach(ticket => {
+      // 创建唯一标识（同一车次、同一区间、同一时间）
+      const key = `${ticket.trainNumber}_${ticket.fromStation}_${ticket.toStation}_${ticket.departureTime}_${ticket.arrivalTime}`
+      
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          trainNumber: ticket.trainNumber,
+          fromStation: ticket.fromStation,
+          toStation: ticket.toStation,
+          departureTime: ticket.departureTime,
+          arrivalTime: ticket.arrivalTime,
+          seats: {} // 存储各席别的价格信息
+        })
+      }
+      
+      const group = groupedMap.get(key)
+      const seatType = ticket.seatType
+      
+      // 只处理商务座、一等座、二等座
+      if (['商务座', '一等座', '二等座'].includes(seatType)) {
+        group.seats[seatType] = {
+          originalPrice: ticket.price,
+          seatType: seatType
+        }
+      }
+    })
+    
+    // 转换为数组，并为每条记录计算各席别的折扣价格
+    const mergedTickets = []
+    
+    groupedMap.forEach((group, key) => {
+      // 确保至少有二等座价格，如果没有则尝试根据其他席别推算
+      let basePrice = null
+      
+      if (group.seats['二等座']) {
+        basePrice = group.seats['二等座'].originalPrice
+      } else if (group.seats['一等座']) {
+        // 根据一等座推算二等座价格
+        basePrice = group.seats['一等座'].originalPrice / SEAT_PRICE_RATIO['一等座']
+      } else if (group.seats['商务座']) {
+        // 根据商务座推算二等座价格
+        basePrice = group.seats['商务座'].originalPrice / SEAT_PRICE_RATIO['商务座']
+      }
+      
+      if (basePrice === null) {
+        return // 跳过没有有效价格的记录
+      }
+      
+      // 计算各席别价格
+      const seatPrices = {}
+      for (const seatType of ['商务座', '一等座', '二等座']) {
+        if (group.seats[seatType]) {
+          seatPrices[seatType] = group.seats[seatType].originalPrice
+        } else {
+          // 根据二等座价格推算
+          seatPrices[seatType] = Math.round(basePrice * SEAT_PRICE_RATIO[seatType] * 100) / 100
+        }
+      }
+      
+      // 应用折扣计算（默认使用二等座）
+      const discountResult = calculateDiscountedPrice(
+        seatPrices['二等座'],
+        group.trainNumber,
+        group.departureTime,
+        dateType,
+        advanceDaysRange
+      )
+      
+      mergedTickets.push({
+        id: key,
+        trainNumber: group.trainNumber,
+        fromStation: group.fromStation,
+        toStation: group.toStation,
+        departureTime: group.departureTime,
+        arrivalTime: group.arrivalTime,
+        seatPrices: seatPrices, // 各席别原始价格
+        currentSeatType: '二等座', // 默认席别
+        price: discountResult.price, // 当前显示的折后价格（默认二等座）
+        discountRate: discountResult.discountRate,
+        discountInfo: discountResult.discountInfo,
+        kValue: discountResult.kValue,
+        dateType: discountResult.dateType,
+        timePeriod: discountResult.timePeriod
+      })
+    })
+    
+    // 按出发时间排序
+    mergedTickets.sort((a, b) => {
+      const timeA = a.departureTime.replace(':', '')
+      const timeB = b.departureTime.replace(':', '')
+      return parseInt(timeA) - parseInt(timeB)
+    })
+    
+    return mergedTickets
+  }
+
   const handleSearch = async (values) => {
     setLoading(true)
     try {
@@ -105,21 +224,40 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       setCurrentDateType(dateType)
       setCurrentAdvanceDays(advanceDaysRange)
 
-      const results = await dbManager.searchTickets(
-        fromStation, 
-        toStation,
-        { limit: 5000 }
-      )
+      let results
+      if (searchMode === 'fuzzy') {
+        // 模糊搜索：匹配包含关键词的站点
+        results = await dbManager.searchTicketsFuzzy(
+          fromStation, 
+          toStation,
+          { limit: 5000 }
+        )
+      } else {
+        // 精确搜索：完全匹配站点名称
+        results = await dbManager.searchTickets(
+          fromStation, 
+          toStation,
+          { limit: 5000 }
+        )
+      }
 
       // 保存原始结果
       setRawTickets(results)
 
-      // 应用新的折扣逻辑
-      const discountedTickets = applyNewDiscountToTickets(results, dateType, advanceDaysRange)
+      // 合并同一车次的不同席别，并按出发时间排序
+      const mergedTickets = mergeTicketsBySeatType(results, dateType, advanceDaysRange)
       
-      setTickets(discountedTickets)
+      // 重置席别选择状态
+      const initialSeats = {}
+      mergedTickets.forEach(ticket => {
+        initialSeats[ticket.id] = '二等座'
+      })
+      setSelectedSeats(initialSeats)
+      
+      setTickets(mergedTickets)
 
-      message.success(`找到 ${discountedTickets.length} 条结果`)
+      const modeText = searchMode === 'fuzzy' ? '模糊搜索' : '精确搜索'
+      message.success(`${modeText}找到 ${mergedTickets.length} 个车次`)
     } catch (error) {
       message.error('查询失败: ' + error.message)
     } finally {
@@ -133,8 +271,25 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     form.setFieldValue('dateType', value)
     
     if (rawTickets.length > 0) {
-      const discountedTickets = applyNewDiscountToTickets(rawTickets, value, currentAdvanceDays)
-      setTickets(discountedTickets)
+      const mergedTickets = mergeTicketsBySeatType(rawTickets, value, currentAdvanceDays)
+      // 保持之前的席别选择
+      mergedTickets.forEach(ticket => {
+        const prevSeat = selectedSeats[ticket.id]
+        if (prevSeat && ticket.seatPrices[prevSeat]) {
+          const discountResult = calculateDiscountedPrice(
+            ticket.seatPrices[prevSeat],
+            ticket.trainNumber,
+            ticket.departureTime,
+            value,
+            currentAdvanceDays
+          )
+          ticket.currentSeatType = prevSeat
+          ticket.price = discountResult.price
+          ticket.discountRate = discountResult.discountRate
+          ticket.discountInfo = discountResult.discountInfo
+        }
+      })
+      setTickets(mergedTickets)
     }
   }
 
@@ -143,9 +298,58 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     form.setFieldValue('advanceDaysSelect', value)
     
     if (rawTickets.length > 0) {
-      const discountedTickets = applyNewDiscountToTickets(rawTickets, currentDateType, value)
-      setTickets(discountedTickets)
+      const mergedTickets = mergeTicketsBySeatType(rawTickets, currentDateType, value)
+      // 保持之前的席别选择
+      mergedTickets.forEach(ticket => {
+        const prevSeat = selectedSeats[ticket.id]
+        if (prevSeat && ticket.seatPrices[prevSeat]) {
+          const discountResult = calculateDiscountedPrice(
+            ticket.seatPrices[prevSeat],
+            ticket.trainNumber,
+            ticket.departureTime,
+            currentDateType,
+            value
+          )
+          ticket.currentSeatType = prevSeat
+          ticket.price = discountResult.price
+          ticket.discountRate = discountResult.discountRate
+          ticket.discountInfo = discountResult.discountInfo
+        }
+      })
+      setTickets(mergedTickets)
     }
+  }
+
+  // 处理席别切换
+  const handleSeatChange = (ticketId, seatType) => {
+    setSelectedSeats(prev => ({
+      ...prev,
+      [ticketId]: seatType
+    }))
+    
+    // 更新对应车次的价格
+    setTickets(prevTickets => {
+      return prevTickets.map(ticket => {
+        if (ticket.id === ticketId) {
+          const newPrice = ticket.seatPrices[seatType]
+          const discountResult = calculateDiscountedPrice(
+            newPrice,
+            ticket.trainNumber,
+            ticket.departureTime,
+            currentDateType,
+            currentAdvanceDays
+          )
+          return {
+            ...ticket,
+            currentSeatType: seatType,
+            price: discountResult.price,
+            discountRate: discountResult.discountRate,
+            discountInfo: discountResult.discountInfo
+          }
+        }
+        return ticket
+      })
+    })
   }
 
   const handlePurchase = async (ticket) => {
@@ -219,10 +423,21 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       key: 'arrivalTime',
     },
     {
-      title: '原始票价',
-      dataIndex: 'originalPrice',
-      key: 'originalPrice',
-      render: (price) => price ? `¥${price.toFixed(2)}` : '-'
+      title: '席别',
+      dataIndex: 'currentSeatType',
+      key: 'seatType',
+      width: 200,
+      render: (text, record) => (
+        <Radio.Group 
+          value={selectedSeats[record.id] || '二等座'}
+          onChange={(e) => handleSeatChange(record.id, e.target.value)}
+          size="small"
+        >
+          <Radio.Button value="商务座">商务座</Radio.Button>
+          <Radio.Button value="一等座">一等座</Radio.Button>
+          <Radio.Button value="二等座">二等座</Radio.Button>
+        </Radio.Group>
+      )
     },
     {
       title: '折后票价',
@@ -237,12 +452,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
           </span>
         )
       }
-    },
-    {
-      title: '席别',
-      dataIndex: 'seatType',
-      key: 'seatType',
-      render: (text) => <Tag>{text}</Tag>
     },
     {
       title: '操作',
@@ -311,7 +520,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
           }}
         >
           <Row gutter={16}>
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={24} sm={12} md={5}>
               <Form.Item
                 label="出发站"
                 name="fromStation"
@@ -332,7 +541,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={6}>
+            <Col xs={24} sm={12} md={5}>
               <Form.Item
                 label="到达站"
                 name="toStation"
@@ -353,7 +562,21 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={4}>
+            <Col xs={24} sm={12} md={3}>
+              <Form.Item
+                label="搜索模式"
+              >
+                <Radio.Group 
+                  value={searchMode} 
+                  onChange={(e) => setSearchMode(e.target.value)}
+                  size="small"
+                >
+                  <Radio.Button value="fuzzy">模糊</Radio.Button>
+                  <Radio.Button value="exact">精确</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} md={3}>
               <Form.Item
                 label="日期类型"
                 name="dateType"

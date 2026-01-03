@@ -311,3 +311,4 @@ export function getDiscountDescription(advanceDaysRange) {
 
 export { DISCOUNT_TABLES }
 
+

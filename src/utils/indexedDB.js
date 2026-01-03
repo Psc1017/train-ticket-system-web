@@ -259,7 +259,7 @@ class DBManager {
     })
   }
 
-  // 根据起终点查询票价
+  // 根据起终点查询票价（精确匹配）
   async searchTickets(fromStation, toStation, options = {}) {
     if (!this.db) await this.init()
 
@@ -286,6 +286,47 @@ class DBManager {
             results.push(ticket)
           }
           currentOffset++
+        }
+
+        if (results.length < limit) {
+          cursor.continue()
+        } else {
+          resolve(results)
+        }
+      }
+
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  // 根据起终点模糊查询票价（支持站点名称包含匹配）
+  async searchTicketsFuzzy(fromKeyword, toKeyword, options = {}) {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([STORE_TICKETS], 'readonly')
+      const store = transaction.objectStore(STORE_TICKETS)
+      const request = store.openCursor()
+
+      const results = []
+      const { limit = 5000 } = options
+
+      request.onsuccess = (event) => {
+        const cursor = event.target.result
+        if (!cursor) {
+          resolve(results)
+          return
+        }
+
+        const ticket = cursor.value
+        // 模糊匹配：出发站包含关键词 且 到达站包含关键词
+        const fromMatch = ticket.fromStation && ticket.fromStation.includes(fromKeyword)
+        const toMatch = ticket.toStation && ticket.toStation.includes(toKeyword)
+        
+        if (fromMatch && toMatch) {
+          if (results.length < limit) {
+            results.push(ticket)
+          }
         }
 
         if (results.length < limit) {
