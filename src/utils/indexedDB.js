@@ -301,48 +301,110 @@ class DBManager {
 
   // 根据起终点模糊查询票价（支持站点名称包含匹配）
   // 出发站和到达站都支持模糊匹配（包含匹配）
+  // 优化版本：先用索引缩小范围，再做模糊匹配
   async searchTicketsFuzzy(fromKeyword, toKeyword, options = {}) {
     if (!this.db) await this.init()
 
     const { limit = 5000 } = options
 
-    // 搜索策略：
-    // 出发站和到达站都使用包含匹配（includes）
-    // 例如：搜索"北京"到"南京"，会匹配"北京南"到"南京南"、"北京西"到"南京"等
+    // 优化策略：
+    // 1. 先获取所有匹配出发站关键词的站点名称
+    // 2. 使用索引按出发站查询，只遍历相关记录
+    // 3. 在结果中过滤到达站
 
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([STORE_TICKETS], 'readonly')
-      const store = transaction.objectStore(STORE_TICKETS)
-      const request = store.openCursor()
-
-      const results = []
-
-      request.onsuccess = (event) => {
-        const cursor = event.target.result
-        if (!cursor) {
-          resolve(results)
-          return
-        }
-
-        const ticket = cursor.value
-        // 出发站和到达站都使用模糊匹配（包含匹配）
-        const fromMatch = ticket.fromStation && ticket.fromStation.includes(fromKeyword)
-        const toMatch = ticket.toStation && ticket.toStation.includes(toKeyword)
+    return new Promise(async (resolve, reject) => {
+      try {
+        const transaction = this.db.transaction([STORE_TICKETS, STORE_STATIONS], 'readonly')
+        const ticketStore = transaction.objectStore(STORE_TICKETS)
+        const stationStore = transaction.objectStore(STORE_STATIONS)
         
-        if (fromMatch && toMatch) {
-          if (results.length < limit) {
-            results.push(ticket)
+        // 先获取所有站点，找出匹配的出发站名称
+        const stationRequest = stationStore.getAll()
+        
+        stationRequest.onsuccess = () => {
+          const allStations = stationRequest.result || []
+          
+          // 找出所有包含出发关键词的站点
+          const matchingFromStations = allStations
+            .filter(s => s.name && s.name.includes(fromKeyword))
+            .map(s => s.name)
+          
+          // 找出所有包含到达关键词的站点（用于快速过滤）
+          const matchingToStationsSet = new Set(
+            allStations
+              .filter(s => s.name && s.name.includes(toKeyword))
+              .map(s => s.name)
+          )
+
+          if (matchingFromStations.length === 0) {
+            // 如果没有匹配的出发站，直接返回空结果
+            resolve([])
+            return
           }
+
+          const results = []
+          let completedStations = 0
+
+          // 对每个匹配的出发站使用索引查询
+          matchingFromStations.forEach(fromStation => {
+            const index = ticketStore.index('fromStation')
+            const request = index.openCursor(IDBKeyRange.only(fromStation))
+
+            request.onsuccess = (event) => {
+              const cursor = event.target.result
+              
+              if (!cursor) {
+                completedStations++
+                // 所有出发站都查询完成
+                if (completedStations === matchingFromStations.length) {
+                  resolve(results)
+                }
+                return
+              }
+
+              if (results.length >= limit) {
+                completedStations++
+                if (completedStations === matchingFromStations.length) {
+                  resolve(results)
+                }
+                return
+              }
+
+              const ticket = cursor.value
+              // 检查到达站是否匹配（使用预先计算的集合快速查找）
+              if (ticket.toStation && matchingToStationsSet.has(ticket.toStation)) {
+                results.push(ticket)
+              }
+
+              if (results.length < limit) {
+                cursor.continue()
+              } else {
+                completedStations++
+                if (completedStations === matchingFromStations.length) {
+                  resolve(results)
+                }
+              }
+            }
+
+            request.onerror = () => {
+              completedStations++
+              if (completedStations === matchingFromStations.length) {
+                resolve(results)
+              }
+            }
+          })
         }
 
-        if (results.length < limit) {
-          cursor.continue()
-        } else {
-          resolve(results)
+        stationRequest.onerror = () => {
+          // 如果站点查询失败，回退到全表扫描
+          console.warn('站点查询失败，使用全表扫描')
+          this._searchTicketsFuzzyFallback(fromKeyword, toKeyword, limit)
+            .then(resolve)
+            .catch(reject)
         }
+      } catch (error) {
+        reject(error)
       }
-
-      request.onerror = () => reject(request.error)
     })
   }
 
