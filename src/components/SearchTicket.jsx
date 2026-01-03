@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { 
   Card, 
   Form, 
@@ -11,8 +11,7 @@ import {
   message,
   Statistic,
   Row,
-  Col,
-  Radio
+  Col
 } from 'antd'
 import { 
   SearchOutlined, 
@@ -51,9 +50,6 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
   // 当前选择的参数
   const [currentDateType, setCurrentDateType] = useState('workday')
   const [currentAdvanceDays, setCurrentAdvanceDays] = useState('1-3')
-  
-  // 搜索模式：fuzzy（模糊搜索）或 exact（精确搜索）
-  const [searchMode, setSearchMode] = useState('fuzzy')
   
   // 每行选择的席别（key为车次唯一标识，value为席别）
   const [selectedSeats, setSelectedSeats] = useState({})
@@ -224,22 +220,12 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       setCurrentDateType(dateType)
       setCurrentAdvanceDays(advanceDaysRange)
 
-      let results
-      if (searchMode === 'fuzzy') {
-        // 模糊搜索：匹配包含关键词的站点
-        results = await dbManager.searchTicketsFuzzy(
-          fromStation, 
-          toStation,
-          { limit: 5000 }
-        )
-      } else {
-        // 精确搜索：完全匹配站点名称
-        results = await dbManager.searchTickets(
-          fromStation, 
-          toStation,
-          { limit: 5000 }
-        )
-      }
+      // 使用模糊搜索
+      const results = await dbManager.searchTicketsFuzzy(
+        fromStation, 
+        toStation,
+        { limit: 5000 }
+      )
 
       // 保存原始结果
       setRawTickets(results)
@@ -256,8 +242,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       
       setTickets(mergedTickets)
 
-      const modeText = searchMode === 'fuzzy' ? '模糊搜索' : '精确搜索'
-      message.success(`${modeText}找到 ${mergedTickets.length} 个车次`)
+      message.success(`找到 ${mergedTickets.length} 个车次`)
     } catch (error) {
       message.error('查询失败: ' + error.message)
     } finally {
@@ -426,17 +411,18 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       title: '席别',
       dataIndex: 'currentSeatType',
       key: 'seatType',
-      width: 200,
+      width: 120,
       render: (text, record) => (
-        <Radio.Group 
+        <Select
           value={selectedSeats[record.id] || '二等座'}
-          onChange={(e) => handleSeatChange(record.id, e.target.value)}
+          onChange={(value) => handleSeatChange(record.id, value)}
           size="small"
+          style={{ width: 100 }}
         >
-          <Radio.Button value="商务座">商务座</Radio.Button>
-          <Radio.Button value="一等座">一等座</Radio.Button>
-          <Radio.Button value="二等座">二等座</Radio.Button>
-        </Radio.Group>
+          <Option value="商务座">商务座</Option>
+          <Option value="一等座">一等座</Option>
+          <Option value="二等座">二等座</Option>
+        </Select>
       )
     },
     {
@@ -562,20 +548,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={3}>
-              <Form.Item
-                label="搜索模式"
-              >
-                <Radio.Group 
-                  value={searchMode} 
-                  onChange={(e) => setSearchMode(e.target.value)}
-                  size="small"
-                >
-                  <Radio.Button value="fuzzy">模糊</Radio.Button>
-                  <Radio.Button value="exact">精确</Radio.Button>
-                </Radio.Group>
-              </Form.Item>
-            </Col>
+
             <Col xs={24} sm={12} md={3}>
               <Form.Item
                 label="日期类型"

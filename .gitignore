@@ -1,15 +1,11 @@
 # Dependencies
 node_modules/
 
-# Build output (Vercel会自动构建)
+# Build output
 dist/
+deploy/
 
-# Local env files
-.env
-.env.local
-.env.*.local
-
-# Editor directories
+# IDE
 .vscode/
 .idea/
 
@@ -21,7 +17,10 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Temp files
+# Zip files
 *.zip
-deploy-files.zip
-deploy.zip
+
+# Local env files
+.env
+.env.local
+.env.*.local
