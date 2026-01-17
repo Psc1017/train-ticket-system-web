@@ -11,14 +11,18 @@ import {
   message,
   Statistic,
   Row,
-  Col
+  Col,
+  Divider,
+  Alert
 } from 'antd'
 import { 
   SearchOutlined, 
   RocketOutlined, 
   DollarOutlined,
   CalendarOutlined,
-  ShoppingCartOutlined
+  ShoppingCartOutlined,
+  SwapOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons'
 import dbManager from '../utils/indexedDB'
 import { 
@@ -27,6 +31,7 @@ import {
   getDiscountDescription,
   calculateDiscountedPrice
 } from '../utils/newDiscountRule'
+import { smartSearch, formatDuration } from '../utils/transferSearch'
 
 const { Option } = Select
 
@@ -53,6 +58,11 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
   
   // 每行选择的席别（key为车次唯一标识，value为席别）
   const [selectedSeats, setSelectedSeats] = useState({})
+
+  // 中转相关状态
+  const [searchType, setSearchType] = useState('direct') // 'direct' | 'transfer'
+  const [transferTickets, setTransferTickets] = useState([])
+  const [transferSelectedSeats, setTransferSelectedSeats] = useState({}) // 中转席别选择 { id: { first: '二等座', second: '二等座' } }
 
   // 预加载车次K值映射
   useEffect(() => { 
@@ -220,33 +230,287 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
       setCurrentDateType(dateType)
       setCurrentAdvanceDays(advanceDaysRange)
 
-      // 使用模糊搜索
-      const results = await dbManager.searchTicketsFuzzy(
-        fromStation, 
-        toStation,
-        { limit: 5000 }
-      )
-
-      // 保存原始结果
-      setRawTickets(results)
-
-      // 合并同一车次的不同席别，并按出发时间排序
-      const mergedTickets = mergeTicketsBySeatType(results, dateType, advanceDaysRange)
+      // 使用智能搜索：先搜直达，无直达则搜中转
+      const searchResult = await smartSearch(fromStation, toStation)
       
-      // 重置席别选择状态
-      const initialSeats = {}
-      mergedTickets.forEach(ticket => {
-        initialSeats[ticket.id] = '二等座'
-      })
-      setSelectedSeats(initialSeats)
-      
-      setTickets(mergedTickets)
+      if (searchResult.type === 'direct') {
+        // 直达模式
+        setSearchType('direct')
+        setTransferTickets([])
+        
+        // 保存原始结果
+        setRawTickets(searchResult.results)
 
-      message.success(`找到 ${mergedTickets.length} 个车次`)
+        // 合并同一车次的不同席别，并按出发时间排序
+        const mergedTickets = mergeTicketsBySeatType(searchResult.results, dateType, advanceDaysRange)
+        
+        // 重置席别选择状态
+        const initialSeats = {}
+        mergedTickets.forEach(ticket => {
+          initialSeats[ticket.id] = '二等座'
+        })
+        setSelectedSeats(initialSeats)
+        
+        setTickets(mergedTickets)
+        message.success(`找到 ${mergedTickets.length} 个直达车次`)
+      } else {
+        // 中转模式
+        setSearchType('transfer')
+        setTickets([])
+        setRawTickets([])
+        
+        // 处理中转结果，应用折扣
+        const processedTransfers = processTransferTickets(searchResult.transferResults, dateType, advanceDaysRange)
+        
+        // 初始化中转席别选择
+        const initialTransferSeats = {}
+        processedTransfers.forEach(transfer => {
+          initialTransferSeats[transfer.id] = { first: '二等座', second: '二等座' }
+        })
+        setTransferSelectedSeats(initialTransferSeats)
+        
+        setTransferTickets(processedTransfers)
+        
+        if (processedTransfers.length > 0) {
+          message.info(`无直达车次，找到 ${processedTransfers.length} 个中转方案`)
+        } else {
+          message.warning('未找到直达或中转车次')
+        }
+      }
     } catch (error) {
       message.error('查询失败: ' + error.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  /**
+   * 处理中转车票数据，合并席别并计算折扣
+   */
+  const processTransferTickets = (transferResults, dateType, advanceDaysRange) => {
+    // 按中转方案分组（第一程车次+中转站+第二程车次）
+    const groupedMap = new Map()
+    
+    transferResults.forEach(transfer => {
+      const key = `${transfer.firstLeg.trainNumber}_${transfer.viaStation}_${transfer.secondLeg.trainNumber}_${transfer.firstLeg.departureTime}_${transfer.secondLeg.departureTime}`
+      
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          ...transfer,
+          firstLegSeats: {},
+          secondLegSeats: {}
+        })
+      }
+      
+      const group = groupedMap.get(key)
+      const firstSeatType = transfer.firstLeg.seatType
+      const secondSeatType = transfer.secondLeg.seatType
+      
+      // 收集第一程各席别价格
+      if (['商务座', '一等座', '二等座'].includes(firstSeatType)) {
+        group.firstLegSeats[firstSeatType] = transfer.firstLeg.price
+      }
+      
+      // 收集第二程各席别价格
+      if (['商务座', '一等座', '二等座'].includes(secondSeatType)) {
+        group.secondLegSeats[secondSeatType] = transfer.secondLeg.price
+      }
+    })
+    
+    // 转换为数组并计算折扣价格
+    const processedTransfers = []
+    
+    groupedMap.forEach((group, key) => {
+      // 确保有二等座价格，如果没有则推算
+      const firstBasePrice = group.firstLegSeats['二等座'] || 
+        (group.firstLegSeats['一等座'] ? group.firstLegSeats['一等座'] / SEAT_PRICE_RATIO['一等座'] : null) ||
+        (group.firstLegSeats['商务座'] ? group.firstLegSeats['商务座'] / SEAT_PRICE_RATIO['商务座'] : null)
+      
+      const secondBasePrice = group.secondLegSeats['二等座'] || 
+        (group.secondLegSeats['一等座'] ? group.secondLegSeats['一等座'] / SEAT_PRICE_RATIO['一等座'] : null) ||
+        (group.secondLegSeats['商务座'] ? group.secondLegSeats['商务座'] / SEAT_PRICE_RATIO['商务座'] : null)
+      
+      if (!firstBasePrice || !secondBasePrice) return
+      
+      // 计算各席别价格
+      const firstSeatPrices = {}
+      const secondSeatPrices = {}
+      
+      for (const seatType of ['商务座', '一等座', '二等座']) {
+        firstSeatPrices[seatType] = group.firstLegSeats[seatType] || 
+          Math.round(firstBasePrice * SEAT_PRICE_RATIO[seatType] * 100) / 100
+        secondSeatPrices[seatType] = group.secondLegSeats[seatType] || 
+          Math.round(secondBasePrice * SEAT_PRICE_RATIO[seatType] * 100) / 100
+      }
+      
+      // 计算第一程折扣（默认二等座）
+      const firstDiscount = calculateDiscountedPrice(
+        firstSeatPrices['二等座'],
+        group.firstLeg.trainNumber,
+        group.firstLeg.departureTime,
+        dateType,
+        advanceDaysRange
+      )
+      
+      // 计算第二程折扣（默认二等座）
+      const secondDiscount = calculateDiscountedPrice(
+        secondSeatPrices['二等座'],
+        group.secondLeg.trainNumber,
+        group.secondLeg.departureTime,
+        dateType,
+        advanceDaysRange
+      )
+      
+      processedTransfers.push({
+        id: key,
+        viaStation: group.viaStation,
+        waitTime: group.waitTime,
+        waitTimeFormatted: group.waitTimeFormatted,
+        totalTime: group.totalTime,
+        totalTimeFormatted: group.totalTimeFormatted,
+        // 第一程信息
+        firstLeg: {
+          trainNumber: group.firstLeg.trainNumber,
+          fromStation: group.firstLeg.fromStation,
+          toStation: group.firstLeg.toStation,
+          departureTime: group.firstLeg.departureTime,
+          arrivalTime: group.firstLeg.arrivalTime,
+          seatPrices: firstSeatPrices,
+          currentSeatType: '二等座',
+          price: firstDiscount.price,
+          discountRate: firstDiscount.discountRate,
+          discountInfo: firstDiscount.discountInfo,
+          kValue: firstDiscount.kValue
+        },
+        // 第二程信息
+        secondLeg: {
+          trainNumber: group.secondLeg.trainNumber,
+          fromStation: group.secondLeg.fromStation,
+          toStation: group.secondLeg.toStation,
+          departureTime: group.secondLeg.departureTime,
+          arrivalTime: group.secondLeg.arrivalTime,
+          seatPrices: secondSeatPrices,
+          currentSeatType: '二等座',
+          price: secondDiscount.price,
+          discountRate: secondDiscount.discountRate,
+          discountInfo: secondDiscount.discountInfo,
+          kValue: secondDiscount.kValue
+        },
+        // 总价
+        totalPrice: firstDiscount.price + secondDiscount.price
+      })
+    })
+    
+    // 按第一程出发时间排序
+    processedTransfers.sort((a, b) => {
+      const timeA = a.firstLeg.departureTime.replace(':', '')
+      const timeB = b.firstLeg.departureTime.replace(':', '')
+      return parseInt(timeA) - parseInt(timeB)
+    })
+    
+    return processedTransfers
+  }
+
+  // 处理中转席别切换
+  const handleTransferSeatChange = (transferId, leg, seatType) => {
+    setTransferSelectedSeats(prev => ({
+      ...prev,
+      [transferId]: {
+        ...prev[transferId],
+        [leg]: seatType
+      }
+    }))
+    
+    // 更新对应中转方案的价格
+    setTransferTickets(prevTransfers => {
+      return prevTransfers.map(transfer => {
+        if (transfer.id === transferId) {
+          const updatedTransfer = { ...transfer }
+          
+          if (leg === 'first') {
+            const newPrice = transfer.firstLeg.seatPrices[seatType]
+            const discountResult = calculateDiscountedPrice(
+              newPrice,
+              transfer.firstLeg.trainNumber,
+              transfer.firstLeg.departureTime,
+              currentDateType,
+              currentAdvanceDays
+            )
+            updatedTransfer.firstLeg = {
+              ...transfer.firstLeg,
+              currentSeatType: seatType,
+              price: discountResult.price,
+              discountRate: discountResult.discountRate,
+              discountInfo: discountResult.discountInfo
+            }
+          } else {
+            const newPrice = transfer.secondLeg.seatPrices[seatType]
+            const discountResult = calculateDiscountedPrice(
+              newPrice,
+              transfer.secondLeg.trainNumber,
+              transfer.secondLeg.departureTime,
+              currentDateType,
+              currentAdvanceDays
+            )
+            updatedTransfer.secondLeg = {
+              ...transfer.secondLeg,
+              currentSeatType: seatType,
+              price: discountResult.price,
+              discountRate: discountResult.discountRate,
+              discountInfo: discountResult.discountInfo
+            }
+          }
+          
+          // 更新总价
+          updatedTransfer.totalPrice = updatedTransfer.firstLeg.price + updatedTransfer.secondLeg.price
+          
+          return updatedTransfer
+        }
+        return transfer
+      })
+    })
+  }
+
+  // 购买中转票（第一程或第二程）
+  const handleTransferPurchase = async (transfer, leg) => {
+    if (!participantId) {
+      message.error('请先设置参与者编号')
+      return
+    }
+
+    setPurchasing(true)
+    
+    try {
+      const ticket = leg === 'first' ? transfer.firstLeg : transfer.secondLeg
+      const seatType = transferSelectedSeats[transfer.id]?.[leg] || '二等座'
+      
+      const purchaseData = {
+        participantId: participantId,
+        trainNumber: ticket.trainNumber,
+        fromStation: ticket.fromStation,
+        toStation: ticket.toStation,
+        departureTime: ticket.departureTime,
+        arrivalTime: ticket.arrivalTime,
+        originalPrice: ticket.seatPrices[seatType],
+        finalPrice: ticket.price,
+        discountRate: ticket.discountRate || 1,
+        discountInfo: ticket.discountInfo || '无折扣',
+        kValue: ticket.kValue,
+        dateType: currentDateType,
+        timePeriod: ticket.timePeriod,
+        advanceDays: currentAdvanceDays,
+        seatType: seatType,
+        isTransfer: true,
+        transferLeg: leg === 'first' ? '第一程' : '第二程',
+        viaStation: transfer.viaStation
+      }
+
+      await dbManager.savePurchase(purchaseData)
+      message.success(`${leg === 'first' ? '第一程' : '第二程'}购票成功！票价: ¥${ticket.price.toFixed(2)}`)
+    } catch (error) {
+      message.error('购票失败: ' + error.message)
+    } finally {
+      setPurchasing(false)
     }
   }
 
@@ -255,7 +519,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     setCurrentDateType(value)
     form.setFieldValue('dateType', value)
     
-    if (rawTickets.length > 0) {
+    if (searchType === 'direct' && rawTickets.length > 0) {
       const mergedTickets = mergeTicketsBySeatType(rawTickets, value, currentAdvanceDays)
       // 保持之前的席别选择
       mergedTickets.forEach(ticket => {
@@ -275,6 +539,9 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         }
       })
       setTickets(mergedTickets)
+    } else if (searchType === 'transfer' && transferTickets.length > 0) {
+      // 重新计算中转票价折扣
+      updateTransferDiscounts(value, currentAdvanceDays)
     }
   }
 
@@ -282,7 +549,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     setCurrentAdvanceDays(value)
     form.setFieldValue('advanceDaysSelect', value)
     
-    if (rawTickets.length > 0) {
+    if (searchType === 'direct' && rawTickets.length > 0) {
       const mergedTickets = mergeTicketsBySeatType(rawTickets, currentDateType, value)
       // 保持之前的席别选择
       mergedTickets.forEach(ticket => {
@@ -302,7 +569,53 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         }
       })
       setTickets(mergedTickets)
+    } else if (searchType === 'transfer' && transferTickets.length > 0) {
+      // 重新计算中转票价折扣
+      updateTransferDiscounts(currentDateType, value)
     }
+  }
+
+  // 更新中转票价折扣
+  const updateTransferDiscounts = (dateType, advanceDays) => {
+    setTransferTickets(prevTransfers => {
+      return prevTransfers.map(transfer => {
+        const firstSeatType = transferSelectedSeats[transfer.id]?.first || '二等座'
+        const secondSeatType = transferSelectedSeats[transfer.id]?.second || '二等座'
+        
+        const firstDiscount = calculateDiscountedPrice(
+          transfer.firstLeg.seatPrices[firstSeatType],
+          transfer.firstLeg.trainNumber,
+          transfer.firstLeg.departureTime,
+          dateType,
+          advanceDays
+        )
+        
+        const secondDiscount = calculateDiscountedPrice(
+          transfer.secondLeg.seatPrices[secondSeatType],
+          transfer.secondLeg.trainNumber,
+          transfer.secondLeg.departureTime,
+          dateType,
+          advanceDays
+        )
+        
+        return {
+          ...transfer,
+          firstLeg: {
+            ...transfer.firstLeg,
+            price: firstDiscount.price,
+            discountRate: firstDiscount.discountRate,
+            discountInfo: firstDiscount.discountInfo
+          },
+          secondLeg: {
+            ...transfer.secondLeg,
+            price: secondDiscount.price,
+            discountRate: secondDiscount.discountRate,
+            discountInfo: secondDiscount.discountInfo
+          },
+          totalPrice: firstDiscount.price + secondDiscount.price
+        }
+      })
+    })
   }
 
   // 处理席别切换
@@ -461,6 +774,151 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
     return labels[type] || type
   }
 
+  // 渲染中转方案卡片
+  const renderTransferCard = (transfer) => {
+    const firstSeat = transferSelectedSeats[transfer.id]?.first || '二等座'
+    const secondSeat = transferSelectedSeats[transfer.id]?.second || '二等座'
+    
+    return (
+      <Card 
+        key={transfer.id} 
+        style={{ marginBottom: 16 }}
+        bodyStyle={{ padding: 16 }}
+      >
+        {/* 中转概览 */}
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Space>
+            <Tag color="orange" style={{ fontSize: '14px' }}>
+              <SwapOutlined /> 中转换乘
+            </Tag>
+            <span style={{ fontWeight: 'bold' }}>
+              {transfer.firstLeg.fromStation} → <span style={{ color: '#fa8c16' }}>{transfer.viaStation}</span> → {transfer.secondLeg.toStation}
+            </span>
+          </Space>
+          <Space>
+            <Tag color="blue">
+              <ClockCircleOutlined /> 换乘等待: {transfer.waitTimeFormatted}
+            </Tag>
+            <Tag color="purple">
+              总耗时: {transfer.totalTimeFormatted}
+            </Tag>
+            <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#1890ff' }}>
+              总价: ¥{transfer.totalPrice.toFixed(2)}
+            </span>
+          </Space>
+        </div>
+        
+        <Divider style={{ margin: '12px 0' }} />
+        
+        {/* 第一程 */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8 }}>
+            <Tag color="green">第一程</Tag>
+          </div>
+          <Row gutter={16} align="middle">
+            <Col span={3}>
+              <Space direction="vertical" size={0}>
+                <Tag color="blue"><RocketOutlined /> {transfer.firstLeg.trainNumber}</Tag>
+                <Tag color={transfer.firstLeg.kValue === 1 ? 'red' : transfer.firstLeg.kValue === 2 ? 'orange' : 'green'} style={{ fontSize: '10px' }}>
+                  K={transfer.firstLeg.kValue}
+                </Tag>
+              </Space>
+            </Col>
+            <Col span={3}>{transfer.firstLeg.fromStation}</Col>
+            <Col span={3}>{transfer.firstLeg.toStation}</Col>
+            <Col span={3}>{transfer.firstLeg.departureTime}</Col>
+            <Col span={3}>{transfer.firstLeg.arrivalTime}</Col>
+            <Col span={3}>
+              <Select
+                value={firstSeat}
+                onChange={(value) => handleTransferSeatChange(transfer.id, 'first', value)}
+                size="small"
+                style={{ width: 100 }}
+              >
+                <Option value="商务座">商务座</Option>
+                <Option value="一等座">一等座</Option>
+                <Option value="二等座">二等座</Option>
+              </Select>
+            </Col>
+            <Col span={3}>
+              <span style={{ 
+                fontSize: '16px', 
+                fontWeight: 'bold', 
+                color: transfer.firstLeg.discountRate < 1 ? '#52c41a' : '#f5222d' 
+              }}>
+                ¥{transfer.firstLeg.price.toFixed(2)}
+              </span>
+            </Col>
+            <Col span={3}>
+              <Button
+                type="primary"
+                size="small"
+                icon={<ShoppingCartOutlined />}
+                onClick={() => handleTransferPurchase(transfer, 'first')}
+                loading={purchasing}
+              >
+                购票
+              </Button>
+            </Col>
+          </Row>
+        </div>
+        
+        {/* 第二程 */}
+        <div>
+          <div style={{ marginBottom: 8 }}>
+            <Tag color="cyan">第二程</Tag>
+          </div>
+          <Row gutter={16} align="middle">
+            <Col span={3}>
+              <Space direction="vertical" size={0}>
+                <Tag color="blue"><RocketOutlined /> {transfer.secondLeg.trainNumber}</Tag>
+                <Tag color={transfer.secondLeg.kValue === 1 ? 'red' : transfer.secondLeg.kValue === 2 ? 'orange' : 'green'} style={{ fontSize: '10px' }}>
+                  K={transfer.secondLeg.kValue}
+                </Tag>
+              </Space>
+            </Col>
+            <Col span={3}>{transfer.secondLeg.fromStation}</Col>
+            <Col span={3}>{transfer.secondLeg.toStation}</Col>
+            <Col span={3}>{transfer.secondLeg.departureTime}</Col>
+            <Col span={3}>{transfer.secondLeg.arrivalTime}</Col>
+            <Col span={3}>
+              <Select
+                value={secondSeat}
+                onChange={(value) => handleTransferSeatChange(transfer.id, 'second', value)}
+                size="small"
+                style={{ width: 100 }}
+              >
+                <Option value="商务座">商务座</Option>
+                <Option value="一等座">一等座</Option>
+                <Option value="二等座">二等座</Option>
+              </Select>
+            </Col>
+            <Col span={3}>
+              <span style={{ 
+                fontSize: '16px', 
+                fontWeight: 'bold', 
+                color: transfer.secondLeg.discountRate < 1 ? '#52c41a' : '#f5222d' 
+              }}>
+                ¥{transfer.secondLeg.price.toFixed(2)}
+              </span>
+            </Col>
+            <Col span={3}>
+              <Button
+                type="primary"
+                size="small"
+                icon={<ShoppingCartOutlined />}
+                onClick={() => handleTransferPurchase(transfer, 'second')}
+                loading={purchasing}
+              >
+                购票
+              </Button>
+            </Col>
+          </Row>
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <div>
       <Card style={{ marginBottom: 16, background: '#f0f9ff' }} bodyStyle={{ padding: 12 }}>
@@ -597,7 +1055,8 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         </Form>
       </Card>
 
-      {tickets.length > 0 && (
+      {/* 直达结果统计 */}
+      {searchType === 'direct' && tickets.length > 0 && (
         <Card style={{ marginBottom: 24 }}>
           <Row gutter={16}>
             <Col span={6}>
@@ -610,7 +1069,7 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
             </Col>
             <Col span={6}>
               <Statistic 
-                title="查询结果" 
+                title="直达车次" 
                 value={tickets.length}
                 suffix="条"
               />
@@ -635,8 +1094,55 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         </Card>
       )}
 
-      {tickets.length > 0 && (
-        <Card title="查询结果">
+      {/* 中转结果统计 */}
+      {searchType === 'transfer' && transferTickets.length > 0 && (
+        <Card style={{ marginBottom: 24 }}>
+          <Alert 
+            message="无直达车次，以下为中转换乘方案" 
+            type="info" 
+            showIcon 
+            style={{ marginBottom: 16 }}
+          />
+          <Row gutter={16}>
+            <Col span={6}>
+              <Statistic 
+                title="当前设置" 
+                value={getDateTypeLabel(currentDateType)}
+                prefix={<CalendarOutlined />}
+                suffix={getDiscountDescription(currentAdvanceDays)}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic 
+                title="中转方案" 
+                value={transferTickets.length}
+                prefix={<SwapOutlined />}
+                suffix="条"
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic 
+                title="最低总价" 
+                value={Math.min(...transferTickets.map(t => t.totalPrice))}
+                prefix="¥"
+                precision={2}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic 
+                title="平均总价" 
+                value={transferTickets.reduce((sum, t) => sum + t.totalPrice, 0) / transferTickets.length}
+                prefix="¥"
+                precision={2}
+              />
+            </Col>
+          </Row>
+        </Card>
+      )}
+
+      {/* 直达结果表格 */}
+      {searchType === 'direct' && tickets.length > 0 && (
+        <Card title="直达车次">
           <Table 
             columns={columns} 
             dataSource={tickets}
@@ -651,7 +1157,34 @@ function SearchTicket({ dbReady, refreshKey = 0 }) {
         </Card>
       )}
 
-      {statistics && tickets.length === 0 && (
+      {/* 中转结果列表 */}
+      {searchType === 'transfer' && transferTickets.length > 0 && (
+        <Card 
+          title={
+            <Space>
+              <SwapOutlined />
+              <span>中转换乘方案</span>
+              <Tag color="orange">{transferTickets.length} 个方案</Tag>
+            </Space>
+          }
+        >
+          <div style={{ marginBottom: 12 }}>
+            <Row gutter={16} style={{ fontWeight: 'bold', color: '#666', fontSize: '12px', padding: '0 16px' }}>
+              <Col span={3}>车次</Col>
+              <Col span={3}>出发站</Col>
+              <Col span={3}>到达站</Col>
+              <Col span={3}>发车时间</Col>
+              <Col span={3}>到达时间</Col>
+              <Col span={3}>席别</Col>
+              <Col span={3}>折后票价</Col>
+              <Col span={3}>操作</Col>
+            </Row>
+          </div>
+          {transferTickets.map(transfer => renderTransferCard(transfer))}
+        </Card>
+      )}
+
+      {statistics && tickets.length === 0 && transferTickets.length === 0 && (
         <Card>
           <Row gutter={16}>
             <Col span={12}>

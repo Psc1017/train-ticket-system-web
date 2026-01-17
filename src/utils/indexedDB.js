@@ -336,9 +336,12 @@ class DBManager {
               .map(s => s.name)
           )
 
-          if (matchingFromStations.length === 0) {
-            // 如果没有匹配的出发站，直接返回空结果
-            resolve([])
+          // 如果站点表为空或没有匹配的出发站，回退到全表扫描
+          if (allStations.length === 0 || matchingFromStations.length === 0) {
+            console.log('站点表为空或无匹配站点，使用全表扫描搜索...')
+            this._searchTicketsFuzzyFallback(fromKeyword, toKeyword, limit)
+              .then(resolve)
+              .catch(reject)
             return
           }
 
@@ -443,6 +446,72 @@ class DBManager {
       }
 
       request.onerror = () => reject(request.error)
+    })
+  }
+
+  // 根据出发站查询所有车次（用于中转搜索）
+  async searchByDeparture(fromStation, options = {}) {
+    if (!this.db) await this.init()
+
+    const { limit = 5000 } = options
+
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db.transaction([STORE_TICKETS], 'readonly')
+        const store = transaction.objectStore(STORE_TICKETS)
+        const index = store.index('fromStation')
+        const request = index.openCursor(IDBKeyRange.only(fromStation))
+
+        const results = []
+
+        request.onsuccess = (event) => {
+          const cursor = event.target.result
+          if (!cursor || results.length >= limit) {
+            resolve(results)
+            return
+          }
+
+          results.push(cursor.value)
+          cursor.continue()
+        }
+
+        request.onerror = () => reject(request.error)
+      } catch (error) {
+        reject(error)
+      }
+    })
+  }
+
+  // 根据到达站查询所有车次（用于中转搜索）
+  async searchByArrival(toStation, options = {}) {
+    if (!this.db) await this.init()
+
+    const { limit = 5000 } = options
+
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db.transaction([STORE_TICKETS], 'readonly')
+        const store = transaction.objectStore(STORE_TICKETS)
+        const index = store.index('toStation')
+        const request = index.openCursor(IDBKeyRange.only(toStation))
+
+        const results = []
+
+        request.onsuccess = (event) => {
+          const cursor = event.target.result
+          if (!cursor || results.length >= limit) {
+            resolve(results)
+            return
+          }
+
+          results.push(cursor.value)
+          cursor.continue()
+        }
+
+        request.onerror = () => reject(request.error)
+      } catch (error) {
+        reject(error)
+      }
     })
   }
 
